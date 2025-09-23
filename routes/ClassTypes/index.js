@@ -130,7 +130,7 @@ router.post(
   validateClassType,
   classTypeController.createClassType
 );
-
+ 
 /**
  * @route   GET /api/class-types
  * @desc    Get all class types with pagination and filtering
