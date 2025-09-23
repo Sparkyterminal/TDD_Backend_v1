@@ -227,6 +227,23 @@ module.exports.addCoach = async (req, res) => {
   }
 };
 
+
+// Controller: Get all coaches
+module.exports.getCoaches = async (req, res) => {
+  try {
+    const coaches = await User.find({ role: "COACH" });
+    return res.status(200).json({
+      message: "Coaches fetched successfully",
+      data: coaches,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Server error while fetching coaches",
+      error,
+    });
+  }
+};
+
 // Edit user (by admin only)
 module.exports.editUser = async (req, res) => {
   const errors = validationResult(req);
