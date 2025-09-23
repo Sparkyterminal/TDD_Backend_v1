@@ -12,7 +12,13 @@ const userSchema = new Schema(
             type: String,
             required: true
         },
-        
+        media: [
+            {
+            type: ObjectId,
+            ref: "media",
+            required: true,
+            }
+          ],
         email_data: {
             email_id: {
                 type: String,
