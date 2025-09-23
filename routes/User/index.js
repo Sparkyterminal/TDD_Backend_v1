@@ -12,7 +12,7 @@ router.post(
     body("last_name").not().isEmpty(),
     body("email_id").not().isEmpty(),
     body("password").not().isEmpty(),
-    body("phone_number").not().isEmpty(),
+    // body("phone_number").not().isEmpty(),
     body("role").not().isEmpty(),
   ],
   userController.registerUserWithoutToken
