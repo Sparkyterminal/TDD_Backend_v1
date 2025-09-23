@@ -200,7 +200,9 @@ module.exports.addCoach = async (req, res) => {
       fields: errors.array(),
     });
   }
-
+console.log('user',req.users)
+  // Check if the user is an ADMIN or not
+  // Only ADMIN can add coach
   if (req.user.role !== "ADMIN") {
     return res.status(STATUS.UNAUTHORISED).json({
       message: "Only ADMIN can add coach",
