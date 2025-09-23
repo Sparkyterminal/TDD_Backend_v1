@@ -1,0 +1,76 @@
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const ObjectId = Schema.Types.ObjectId;
+
+const workshopSchema = new Schema(
+    {
+        title: {
+            type: String,
+            required: true
+        },
+        description: {
+            type: String,
+            required: false
+        },
+        instructor_user_ids: {
+            type: [ObjectId],
+            ref: 'user',
+            default: []
+        },
+        space_id: {
+            type: ObjectId,
+            ref: 'studiospace',
+            required: false
+        },
+        start_at: {
+            type: Date,
+            required: true
+        },
+        end_at: {
+            type: Date,
+            required: true
+        },
+        capacity: {
+            type: Number,
+            required: false
+        },
+        price: {
+            type: Number,
+            required: false
+        },
+        tags: {
+            type: [String],
+            default: []
+        },
+        media: {
+            cover_image_url: { type: String, required: false },
+            gallery_urls: { type: [String], default: [] }
+        },
+        is_cancelled: {
+            type: Boolean,
+            default: false
+        },
+        is_active: {
+            type: Boolean,
+            default: true
+        }
+    },
+    {
+        timestamps: true
+    }
+);
+
+workshopSchema.index({ start_at: 1 });
+workshopSchema.index({ title: 'text', description: 'text', tags: 'text' });
+
+workshopSchema.set('toJSON', {
+    transform: (doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+    }
+});
+
+module.exports = mongoose.model('workshop', workshopSchema);
+
+
