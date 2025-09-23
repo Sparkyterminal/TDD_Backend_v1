@@ -197,7 +197,7 @@ module.exports.addCoach = async (req, res) => {
   if (!errors.isEmpty()) {
     return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
   }
-
+  console.log('userrole', req.user.role,req.user)
   if (req.user.role !== "ADMIN") {
     return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can add coach" });
   }
