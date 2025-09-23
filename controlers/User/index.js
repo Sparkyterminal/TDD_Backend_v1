@@ -250,15 +250,31 @@ module.exports.addCoach = async (req, res) => {
 // Controller: Get all coaches
 module.exports.getCoaches = async (req, res) => {
   try {
+    const searchTerm = req.query.q ? req.query.q.trim().toLowerCase() : "";
+
+    // Build the match criteria
+    const matchCriteria = {
+      role: "COACH",
+    };
+
+    if (searchTerm) {
+      const regex = new RegExp(searchTerm, "i"); // case-insensitive
+      matchCriteria.$or = [
+        { first_name: regex },
+        { last_name: regex },
+        { "email_data.temp_email_id": regex },
+      ];
+    }
+
     const coaches = await User.aggregate([
-      { $match: { role: "COACH" } },
+      { $match: matchCriteria },
       {
         $lookup: {
-          from: "media",              // collection name in MongoDB
-          localField: "media",        // field in users schema
-          foreignField: "_id",        // field in media collection
-          as: "media_details",       // output array field
-        }
+          from: "media",
+          localField: "media",
+          foreignField: "_id",
+          as: "media_details",
+        },
       },
       {
         $project: {
@@ -269,11 +285,11 @@ module.exports.getCoaches = async (req, res) => {
           role: 1,
           is_active: 1,
           is_archived: 1,
-          media_details: 1,          // include media details as nested array
+          media_details: 1,
           createdAt: 1,
           updatedAt: 1,
-        }
-      }
+        },
+      },
     ]);
 
     return res.status(200).json({
@@ -287,6 +303,7 @@ module.exports.getCoaches = async (req, res) => {
     });
   }
 };
+
 
 
 // Edit user (by admin only)
