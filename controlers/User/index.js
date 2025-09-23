@@ -195,37 +195,54 @@ module.exports.getUsers = async (req, res) => {
 module.exports.addCoach = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
+    return res.status(STATUS.BAD_REQUEST).json({
+      message: "Bad request",
+      fields: errors.array(),
+    });
   }
-  console.log('userrole', req.user.role,req.user)
+
   if (req.user.role !== "ADMIN") {
-    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can add coach" });
+    return res.status(STATUS.UNAUTHORISED).json({
+      message: "Only ADMIN can add coach",
+    });
   }
 
-  const { first_name, last_name, email_id, password, role } = req.body;
+  const { first_name, last_name, email_id, password, role, media } = req.body;
+
   if (role !== "COACH") {
-    return res.status(STATUS.BAD_REQUEST).json({ message: "Only COACH role can be added" });
+    return res.status(STATUS.BAD_REQUEST).json({
+      message: "Only COACH role can be added",
+    });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 12);
-  const user = new User({
-    first_name: first_name.toLowerCase().replaceAll(/\s/g, ""),
-    last_name: last_name.toLowerCase().replaceAll(/\s/g, ""),
-    email_data: {
-      temp_email_id: email_id.toLowerCase(),
-      is_validated: true,
-    },
-    password: hashedPassword,
-    role: "COACH",
-  });
 
   try {
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = new User({
+      first_name: first_name.toLowerCase().replace(/\s/g, ""),
+      last_name: last_name.toLowerCase().replace(/\s/g, ""),
+      email_data: {
+        temp_email_id: email_id.toLowerCase(),
+        is_validated: true,
+      },
+      password: hashedPassword,
+      role: "COACH",
+      media: media,
+    });
+
     const savedUser = await user.save();
-    return res.status(STATUS.CREATED).json({ message: "Coach Created Successfully", data: savedUser.id });
+    return res.status(STATUS.CREATED).json({
+      message: "Coach Created Successfully",
+      data: savedUser.id,
+    });
   } catch (error) {
-    return res.status(STATUS.BAD_REQUEST).json({ message: MESSAGE.badRequest, error });
+    return res.status(STATUS.BAD_REQUEST).json({
+      message: MESSAGE.badRequest,
+      error,
+    });
   }
 };
+
 
 
 // Controller: Get all coaches
