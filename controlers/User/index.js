@@ -250,7 +250,32 @@ module.exports.addCoach = async (req, res) => {
 // Controller: Get all coaches
 module.exports.getCoaches = async (req, res) => {
   try {
-    const coaches = await User.find({ role: "COACH" });
+    const coaches = await User.aggregate([
+      { $match: { role: "COACH" } },
+      {
+        $lookup: {
+          from: "media",              // collection name in MongoDB
+          localField: "media",        // field in users schema
+          foreignField: "_id",        // field in media collection
+          as: "media_details",       // output array field
+        }
+      },
+      {
+        $project: {
+          first_name: 1,
+          last_name: 1,
+          email_data: 1,
+          phone_data: 1,
+          role: 1,
+          is_active: 1,
+          is_archived: 1,
+          media_details: 1,          // include media details as nested array
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      }
+    ]);
+
     return res.status(200).json({
       message: "Coaches fetched successfully",
       data: coaches,
@@ -262,6 +287,7 @@ module.exports.getCoaches = async (req, res) => {
     });
   }
 };
+
 
 // Edit user (by admin only)
 module.exports.editUser = async (req, res) => {
