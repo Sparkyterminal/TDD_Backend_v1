@@ -17,11 +17,18 @@ const workshopSchema = new Schema(
             ref: 'user',
             default: []
         },
-        space_id: {
+        media: [
+            {
             type: ObjectId,
-            ref: 'studiospace',
-            required: false
-        },
+            ref: "media",
+            required: true,
+            }
+          ],   
+        // space_id: {
+        //     type: ObjectId,
+        //     ref: 'studiospace',
+        //     required: false
+        // },
         start_at: {
             type: Date,
             required: true
