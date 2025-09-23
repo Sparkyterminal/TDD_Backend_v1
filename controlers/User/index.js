@@ -1,17 +1,10 @@
 require("dotenv").config(); 
-
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
-// const FUNCTION = require("../../utils/functions");
-
 const User = require("../../modals/Users");
-
 const { validationResult } = require("express-validator");
-
-// const { sendLoginValidationSMS } = require("../../utils/functions");
-// const { sendForgotPasswordEmail } = require("../../utils/sendEmail");
-
 const bcrypt = require("bcryptjs");
+
 
 const jwt = require("jsonwebtoken");
 
@@ -179,5 +172,105 @@ module.exports.loginUsingEmail = async (req,res) => {
       message: MESSAGE.internalServerError,
       error,
     });
+  }
+};
+
+module.exports.getUsers = async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (id) {
+      const user = await User.findById(id);
+      if (!user) return res.status(STATUS.NOT_FOUND).json({ message: "User not found" });
+      return res.status(STATUS.SUCCESS).json({ data: user });
+    } else {
+      const users = await User.find();
+      return res.status(STATUS.SUCCESS).json({ data: users });
+    }
+  } catch (error) {
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ message: MESSAGE.internalServerError, error });
+  }
+};
+
+// Add COACH (by admin only)
+module.exports.addCoach = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
+  }
+
+  if (req.user.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can add coach" });
+  }
+
+  const { first_name, last_name, email_id, password, role } = req.body;
+  if (role !== "COACH") {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Only COACH role can be added" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const user = new User({
+    first_name: first_name.toLowerCase().replaceAll(/\s/g, ""),
+    last_name: last_name.toLowerCase().replaceAll(/\s/g, ""),
+    email_data: {
+      temp_email_id: email_id.toLowerCase(),
+      is_validated: true,
+    },
+    password: hashedPassword,
+    role: "COACH",
+  });
+
+  try {
+    const savedUser = await user.save();
+    return res.status(STATUS.CREATED).json({ message: "Coach Created Successfully", data: savedUser.id });
+  } catch (error) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: MESSAGE.badRequest, error });
+  }
+};
+
+// Edit user (by admin only)
+module.exports.editUser = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
+  }
+
+  if (req.user.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can edit users" });
+  }
+
+  const userId = req.params.id;
+  const updates = {};
+  if (req.body.first_name) updates.first_name = req.body.first_name.toLowerCase().replaceAll(/\s/g, "");
+  if (req.body.last_name) updates.last_name = req.body.last_name.toLowerCase().replaceAll(/\s/g, "");
+  if (req.body.email_id) updates["email_data.temp_email_id"] = req.body.email_id.toLowerCase();
+  if (req.body.password) updates.password = await bcrypt.hash(req.body.password, 12);
+  if (req.body.role) updates.role = req.body.role;
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true });
+    if (!updatedUser) return res.status(STATUS.NOT_FOUND).json({ message: "User not found" });
+    return res.status(STATUS.SUCCESS).json({ message: "User updated", data: updatedUser });
+  } catch (error) {
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ message: MESSAGE.internalServerError, error });
+  }
+};
+
+// Delete user (by admin only)
+module.exports.deleteUser = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
+  }
+  if (req.user.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can delete users" });
+  }
+
+  const userId = req.params.id;
+  try {
+    const deletedUser = await User.findByIdAndDelete(userId);
+    if (!deletedUser) return res.status(STATUS.NOT_FOUND).json({ message: "User not found" });
+    return res.status(STATUS.SUCCESS).json({ message: "User deleted", data: userId });
+  } catch (error) {
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ message: MESSAGE.internalServerError, error });
   }
 };

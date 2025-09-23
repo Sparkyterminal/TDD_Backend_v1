@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { body } = require("express-validator");
+const { body,param } = require("express-validator");
 const isAuth = require("../../authentication/is-auth");
 const userController = require("../../controlers/User");
 
@@ -26,4 +26,55 @@ router.post(
   ],
   userController.loginUsingEmail
 );
+
+// router.get(
+//   "/:id?",
+//   isAuth,
+//   userController.getUsers
+// );
+router.get('/user{/:id}', isAuth, userController.getUsers);
+
+// Admin adds user with only COACH role
+router.post(
+  "/add-coach",
+  [
+    body("first_name").not().isEmpty(),
+    body("last_name").not().isEmpty(),
+    body("email_id").not().isEmpty(),
+    body("password").not().isEmpty(),
+    body("role").equals("COACH"), // Only COACH allowed
+  ],
+  isAuth,
+  userController.addCoach
+);
+
+// Edit user (admin only)
+router.put(
+  "/edit/:id",
+  [
+    param("id").not().isEmpty(),
+    body("first_name").optional(),
+    body("last_name").optional(),
+    body("email_id").optional(),
+    body("password").optional(),
+    body("role").optional().custom((value) => {
+      if (value && value !== "COACH" && value !== "ADMIN") {
+        throw new Error("Role must be COACH or ADMIN");
+      }
+      return true;
+    }),
+  ],
+  isAuth,
+  userController.editUser
+);
+
+// Delete user (admin only)
+router.delete(
+  "/delete/:id",
+  [param("id").not().isEmpty()],
+  isAuth,
+  userController.deleteUser
+);
+
+
 module.exports = router;
