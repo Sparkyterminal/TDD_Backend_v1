@@ -35,7 +35,7 @@ const userSchema = new Schema(
         phone_data: {
             phone_number: {
                 type: String,
-                required: true
+                required: false
             },
             is_validated: {
                 type: Boolean,
