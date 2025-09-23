@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const STATUS = require("../utils/statusCodes");
 const MESSAGE = require("../utils/messages");
 
-const JWT_SECRET = process.env.MEETINGS_PROCEDINGS_JWT_SECRET;
+const JWT_SECRET = process.env.DANCE_DISTRICT_JWT_SECRET;
 
 module.exports = async (req, res, next) => {
 	const token = req.get('Authorization');
