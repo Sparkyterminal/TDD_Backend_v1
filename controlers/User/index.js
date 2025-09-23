@@ -313,8 +313,13 @@ module.exports.editUser = async (req, res) => {
     return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
   }
 
-  if (req.user.role !== "ADMIN") {
-    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can edit users" });
+  const token = req.get("Authorization");
+  let decodedToken = token ? jwt.decode(token) : null;
+
+  if (!decodedToken || decodedToken.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({
+      message: MESSAGE.unauthorized,
+    });
   }
 
   const userId = req.params.id;
