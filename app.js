@@ -54,8 +54,14 @@ app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
 app.disable('etag');
 
 const userRoutes = require('./routes/User');
+const mediaTypeRoutes = require('./routes/mediaType');
+const mediaRoutes = require('./routes/media');
+const classTypeRoutes = require('./routes/ClassTypes');
 // Routes
 app.use(`${API_ROOT}user`, userRoutes);
+app.use(`${API_ROOT}media-type`, mediaTypeRoutes);
+app.use(`${API_ROOT}media`, mediaRoutes);
+app.use(`${API_ROOT}class-type`, classTypeRoutes);
 
 // Root route
 app.get('/', (req, res) => {

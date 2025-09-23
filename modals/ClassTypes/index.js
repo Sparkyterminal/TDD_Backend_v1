@@ -16,10 +16,7 @@ const classTypeSchema = new Schema(
             type: String,
             required: false
         },
-        duration_minutes: {
-            type: Number,
-            required: false
-        },
+       
         description: {
             type: String,
             required: false

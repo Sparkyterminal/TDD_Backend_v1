@@ -35,6 +35,10 @@ const classSessionSchema = new Schema(
             type: Number,
             required: false
         },
+        duration_minutes: {
+            type: Number,
+            required: false
+        },
         is_cancelled: {
             type: Boolean,
             default: false
