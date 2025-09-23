@@ -33,7 +33,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
     });
   }
 
-  const { first_name, last_name, email, password, role } = req.body;
+  const { first_name, last_name, email_id, password, role } = req.body;
 
   const isFirstNameValid = await validations.validateName(first_name);
   const isLastNameValid = await validations.validateName(last_name);
@@ -43,7 +43,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
   if (
     isFirstNameValid.status === false ||
     isLastNameValid.status === false ||
-    email === "" ||
+    email_id === "" ||
     isPasswordValid.status === false   ) {
     const inputs_errors = [];
 
@@ -55,7 +55,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
       inputs_errors.push("LAST_NAME");
     }
 
-    if (email === "") {
+    if (email_id === "") {
       inputs_errors.push("EMAIL_ID");
     }
 
@@ -78,7 +78,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
     last_name: last_name.toLowerCase().replaceAll(/\s/g, ""),
    
     email_data: {
-      temp_email_id: email.toLowerCase(),
+      temp_email_id: email_id.toLowerCase(),
       is_validated: true,
     },
     password: hashedPassword,
