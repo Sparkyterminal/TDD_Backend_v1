@@ -35,7 +35,6 @@ router.post(
 router.get('/user{/:id}', isAuth, userController.getUsers);
 
 // Admin adds user with only COACH role
-const { body } = require("express-validator");
 
 router.post(
   "/add-coach",
