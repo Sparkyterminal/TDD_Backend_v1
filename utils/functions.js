@@ -1,8 +1,8 @@
 const axios = require('axios');
 const crypto = require('crypto');
 
-const API_ROOT = process.env.MEETINGS_PROCEDINGS_API_ROOT;
-const JWT_SECRET = process.env.MEETINGS_PROCEDINGS_JWT_SECRET;
+const API_ROOT = process.env.DANCE_DISTRICT_API_ROOT;
+const JWT_SECRET = process.env.DANCE_DISTRICT_JWT_SECRET;
 
 
 
