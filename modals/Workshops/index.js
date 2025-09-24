@@ -29,14 +29,22 @@ const workshopSchema = new Schema(
         //     ref: 'studiospace',
         //     required: false
         // },
-        start_at: {
+        date: {
             type: Date,
             required: true
         },
-        end_at: {
+        start_time: {
             type: Date,
             required: true
-        },
+          },
+          end_time: {
+            type: Date,
+            required: true
+          },          
+        // end_at: {
+        //     type: Date,
+        //     required: true
+        // },
         capacity: {
             type: Number,
             required: false
@@ -49,10 +57,10 @@ const workshopSchema = new Schema(
             type: [String],
             default: []
         },
-        media: {
-            cover_image_url: { type: String, required: false },
-            gallery_urls: { type: [String], default: [] }
-        },
+        // media: {
+        //     cover_image_url: { type: String, required: false },
+        //     gallery_urls: { type: [String], default: [] }
+        // },
         is_cancelled: {
             type: Boolean,
             default: false

@@ -57,11 +57,13 @@ const userRoutes = require('./routes/User');
 const mediaTypeRoutes = require('./routes/mediaType');
 const mediaRoutes = require('./routes/media');
 const classTypeRoutes = require('./routes/ClassTypes');
+const workshopRoutes = require('./routes/Workshops');
 // Routes
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}media-type`, mediaTypeRoutes);
 app.use(`${API_ROOT}media`, mediaRoutes);
 app.use(`${API_ROOT}class-type`, classTypeRoutes);
+app.use(`${API_ROOT}workshop`, workshopRoutes);
 
 // Root route
 app.get('/', (req, res) => {
