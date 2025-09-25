@@ -174,24 +174,27 @@ exports.updateWorkshop = async (req, res) => {
     }
 };
 
-exports.deleteWorkshop = async (req, res) => {
+exports.cancelWorkshop = async (req, res) => {
     try {
       const { id } = req.params;
       if (!isValidObjectId(id)) {
         return res.status(400).json({ error: 'Invalid workshop ID' });
       }
   
-      const updated = await Workshop.findByIdAndUpdate(
+      const updatedWorkshop = await Workshop.findByIdAndUpdate(
         id,
-        { is_cancelled: true, is_active: false }, // also deactivate if needed
+        { is_cancelled: true, is_active: false }, // mark cancelled and optionally deactivate
         { new: true }
       );
   
-      if (!updated) {
+      if (!updatedWorkshop) {
         return res.status(404).json({ error: 'Workshop not found' });
       }
   
-      return res.json({ message: 'Workshop marked as cancelled successfully', workshop: updated });
+      return res.json({
+        message: 'Workshop cancelled successfully',
+        workshop: updatedWorkshop
+      });
     } catch (err) {
       console.error('Cancel workshop error:', err);
       return res.status(500).json({ error: 'Server error' });
