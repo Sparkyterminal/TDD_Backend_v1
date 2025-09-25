@@ -207,7 +207,7 @@ exports.cancelWorkshop = async (req, res) => {
   };
 
 
-  exports.bookWorkshop = async (req, res) => {
+exports.bookWorkshop = async (req, res) => {
     try {
       const { workshopId, name, age, email, mobile_number, gender } = req.body;
   
