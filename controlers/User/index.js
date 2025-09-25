@@ -248,46 +248,86 @@ module.exports.addCoach = async (req, res) => {
 
 
 // Controller: Get all coaches
+// module.exports.getCoaches = async (req, res) => {
+//   const errors = validationResult(req);
+//   console.log(errors)
+//   if (!errors.isEmpty()) {
+//     return res.status(STATUS.BAD_REQUEST).json({
+//       message: "Bad request",
+//       fields: errors.array(),
+//     });
+//   }
+//   const token = req.get("Authorization");
+//   let decodedToken = token ? jwt.decode(token) : null;
+
+//   if (!decodedToken || decodedToken.role !== "ADMIN") {
+//     return res.status(STATUS.UNAUTHORISED).json({
+//       message: MESSAGE.unauthorized,
+//     });
+//   }
+//   try {
+//     // Build search query if needed (optional)
+//     const searchTerm = req.query.q ? req.query.q.trim() : "";
+
+//     // Match criteria for coaches, with optional search filtering
+//     let matchCriteria = { role: "COACH" };
+
+//     if (searchTerm.length > 0) {
+//       const regex = new RegExp(searchTerm, "i"); // Case-insensitive regex
+//       matchCriteria.$or = [
+//         { first_name: regex },
+//         { last_name: regex },
+//         { "email_data.temp_email_id": regex },
+//       ];
+//     }
+
+//     // Fetch coaches with media populated
+//     const coaches = await User.find(matchCriteria)
+//       .populate("media")
+//       .select(
+//         "first_name last_name email_data phone_data role is_active is_archived media createdAt updatedAt"
+//       )
+//       .exec();
+
+//     return res.status(200).json({
+//       message: "Coaches fetched successfully",
+//       data: coaches,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       message: "Server error while fetching coaches",
+//       error: error.message || error,
+//     });
+//   }
+// };
+
 module.exports.getCoaches = async (req, res) => {
-  const errors = validationResult(req);
-  console.log(errors)
-  if (!errors.isEmpty()) {
-    return res.status(STATUS.BAD_REQUEST).json({
-      message: "Bad request",
-      fields: errors.array(),
-    });
-  }
-  const token = req.get("Authorization");
-  let decodedToken = token ? jwt.decode(token) : null;
-
-  if (!decodedToken || decodedToken.role !== "ADMIN") {
-    return res.status(STATUS.UNAUTHORISED).json({
-      message: MESSAGE.unauthorized,
-    });
-  }
   try {
-    // Build search query if needed (optional)
-    const searchTerm = req.query.q ? req.query.q.trim() : "";
-
-    // Match criteria for coaches, with optional search filtering
-    let matchCriteria = { role: "COACH" };
-
-    if (searchTerm.length > 0) {
-      const regex = new RegExp(searchTerm, "i"); // Case-insensitive regex
-      matchCriteria.$or = [
-        { first_name: regex },
-        { last_name: regex },
-        { "email_data.temp_email_id": regex },
-      ];
-    }
-
-    // Fetch coaches with media populated
-    const coaches = await User.find(matchCriteria)
-      .populate("media")
-      .select(
-        "first_name last_name email_data phone_data role is_active is_archived media createdAt updatedAt"
-      )
-      .exec();
+    const coaches = await User.aggregate([
+      { $match: { role: "COACH" } },
+      {
+        $lookup: {
+          from: "media",              // collection name in MongoDB
+          localField: "media",        // field in users schema
+          foreignField: "_id",        // field in media collection
+          as: "media_details",       // output array field
+        }
+      },
+      {
+        $project: {
+          first_name: 1,
+          last_name: 1,
+          email_data: 1,
+          phone_data: 1,
+          role: 1,
+          is_active: 1,
+          is_archived: 1,
+          media_details: 1,          // include media details as nested array
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      }
+    ]);
 
     return res.status(200).json({
       message: "Coaches fetched successfully",
@@ -296,10 +336,11 @@ module.exports.getCoaches = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Server error while fetching coaches",
-      error: error.message || error,
+      error,
     });
   }
 };
+
 
 // Edit user (by admin only)
 module.exports.editUser = async (req, res) => {
