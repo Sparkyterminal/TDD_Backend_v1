@@ -7,63 +7,88 @@ function isValidObjectId(id) {
 
 exports.createWorkshop = async (req, res) => {
     try {
-        const {
-            title,
-            description,
-            instructor_user_ids,
-            media,
-            date,
-            start_time,
-            end_time,
-            capacity,
-            price,
-            tags,
-            is_cancelled,
-            is_active
-        } = req.body;
-
-        // Validate required fields
-        if (!title || !date || !start_time || !end_time) {
-            return res.status(400).json({ error: 'Missing required fields: title, date, start_time, end_time' });
-        }
-
-        // Validate date and times are dates
-        if (isNaN(Date.parse(date))) {
-            return res.status(400).json({ error: 'Invalid date format' });
-        }
-        if (isNaN(Date.parse(start_time)) || isNaN(Date.parse(end_time))) {
-            return res.status(400).json({ error: 'Invalid start_time or end_time format' });
-        }
-        // Validate instructor_user_ids and media if provided as arrays of ObjectId strings
-        if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
-            return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
-        }
-        if (media && !Array.isArray(media)) {
-            return res.status(400).json({ error: 'media must be an array of IDs' });
-        }
-
-        const workshop = new Workshop({
-            title,
-            description,
-            instructor_user_ids,
-            media,
-            date: new Date(date),
-            start_at: new Date(start_time),
-            end_at: new Date(end_time),
-            capacity,
-            price,
-            tags,
-            is_cancelled: is_cancelled ?? false,
-            is_active: is_active ?? true
-        });
-
-        await workshop.save();
-        return res.status(201).json(workshop);
+      let {
+        title,
+        description,
+        instructor_user_ids,
+        instructor,
+        media,
+        image,
+        date,
+        start_time,
+        end_time,
+        capacity,
+        price,
+        tags,
+        is_cancelled,
+        is_active
+      } = req.body;
+  
+      // Use image as media array if media not provided
+      if (!media && image) {
+        media = [image];
+      }
+  
+      // Use instructor string as single-element array if instructor_user_ids not provided
+      if (!instructor_user_ids && instructor) {
+        instructor_user_ids = [instructor];
+      }
+  
+      // Validate required fields
+      if (!title || !date || !start_time || !end_time) {
+        return res.status(400).json({ error: 'Missing required fields: title, date, start_time, end_time' });
+      }
+  
+      // Validate date and times
+      if (isNaN(Date.parse(date))) {
+        return res.status(400).json({ error: 'Invalid date format' });
+      }
+      if (isNaN(Date.parse(start_time)) || isNaN(Date.parse(end_time))) {
+        return res.status(400).json({ error: 'Invalid start_time or end_time format' });
+      }
+  
+      // Validate instructor_user_ids and media as arrays if present
+      if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
+        return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
+      }
+      if (media && !Array.isArray(media)) {
+        return res.status(400).json({ error: 'media must be an array of IDs' });
+      }
+  
+      // Convert capacity and price to numbers if they are string
+      if (capacity && typeof capacity === 'string') {
+        capacity = parseInt(capacity, 10);
+        if (isNaN(capacity)) capacity = undefined;
+      }
+      if (price && typeof price === 'string') {
+        price = parseFloat(price);
+        if (isNaN(price)) price = undefined;
+      }
+  
+      const workshop = new Workshop({
+        title,
+        description,
+        instructor_user_ids,
+        media,
+        date: new Date(date),
+        start_time: new Date(start_time),
+        end_time: new Date(end_time),
+        capacity,
+        price,
+        tags,
+        is_cancelled: is_cancelled ?? false,
+        is_active: is_active ?? true
+      });
+  
+      await workshop.save();
+      return res.status(201).json(workshop);
+  
     } catch (err) {
-        console.error('Create workshop error:', err);
-        return res.status(500).json({ error: 'Server error' });
+      console.error('Create workshop error:', err);
+      return res.status(500).json({ error: 'Server error' });
     }
-};
+  };
+  
 
 exports.getWorkshop = async (req, res) => {
     try {
