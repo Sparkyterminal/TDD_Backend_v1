@@ -6,6 +6,6 @@ router.post('/', workshopController.createWorkshop);
 router.get('/', workshopController.getWorkshops);
 router.get('/:id', workshopController.getWorkshop);
 router.put('/:id', workshopController.updateWorkshop);
-router.delete('/:id', workshopController.deleteWorkshop);
+router.delete('/:id', workshopController.cancelWorkshop);
 
 module.exports = router;
