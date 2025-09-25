@@ -268,7 +268,7 @@ exports.cancelWorkshop = async (req, res) => {
       console.log('merchantOrderId:', merchantOrderId);
   
       // Redirect URL to receive payment status
-      const redirectUrl = `http://localhost:4044/api/workshop/getStatusOfPayment?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `http://localhost:4044/workshop/getStatusOfPayment?merchantOrderId=${merchantOrderId}`;
       // In production, use your deployed backend URL instead
   
       // Price in paise (assumes price is in INR)
