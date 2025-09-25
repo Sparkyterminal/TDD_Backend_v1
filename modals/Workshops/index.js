@@ -29,6 +29,9 @@ const workshopSchema = new Schema(
         //     ref: 'studiospace',
         //     required: false
         // },
+        paymentResult: {
+            status: String,
+          },
         date: {
             type: Date,
             required: true
