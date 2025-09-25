@@ -268,7 +268,7 @@ exports.cancelWorkshop = async (req, res) => {
   
       // Prepare payment request
       const merchantOrderId = booking._id.toString();
-  
+      console.log('merchantOrderId:', merchantOrderId);
       // Redirect URL - Adjust to your frontend or backend payment status API
       const redirectUrl = `http://localhost:4044/workshop/payment-status?merchantOrderId=${merchantOrderId}`;
       // Use production URL accordingly:
