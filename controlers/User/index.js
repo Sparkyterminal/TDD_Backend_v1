@@ -249,6 +249,22 @@ module.exports.addCoach = async (req, res) => {
 
 // Controller: Get all coaches
 module.exports.getCoaches = async (req, res) => {
+  const errors = validationResult(req);
+  console.log(errors)
+  if (!errors.isEmpty()) {
+    return res.status(STATUS.BAD_REQUEST).json({
+      message: "Bad request",
+      fields: errors.array(),
+    });
+  }
+  const token = req.get("Authorization");
+  let decodedToken = token ? jwt.decode(token) : null;
+
+  if (!decodedToken || decodedToken.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({
+      message: MESSAGE.unauthorized,
+    });
+  }
   try {
     // Build search query if needed (optional)
     const searchTerm = req.query.q ? req.query.q.trim() : "";
