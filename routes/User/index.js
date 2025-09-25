@@ -32,7 +32,6 @@ router.post(
 //   isAuth,
 //   userController.getUsers
 // );
-router.get('/:id', isAuth, userController.getUsers);
 
 // Admin adds user with only COACH role
 
@@ -57,6 +56,7 @@ router.post(
 
 
 router.get('/coaches', isAuth, userController.getCoaches);
+router.get('/:id', isAuth, userController.getUsers);
 
 // Edit user (admin only)
 router.put(
