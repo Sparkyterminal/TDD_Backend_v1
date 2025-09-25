@@ -329,7 +329,8 @@ exports.cancelWorkshop = async (req, res) => {
   
         // Extract mobile number and name from booking document as per your schema
         
-        return res.redirect(`http://localhost:4044/payment-success`);
+        // return res.redirect(`http://localhost:4044/payment-success`);
+        return res.redirect(`http://localhost:5174/payment-success`)
   
       } else {
         await Booking.findOneAndUpdate(
@@ -340,7 +341,8 @@ exports.cancelWorkshop = async (req, res) => {
           }
         );
   
-        return res.redirect(`http://localhost:4044/payment-failure`);
+        // return res.redirect(`http://localhost:4044/payment-failure`);
+        return res.redirect(`http://localhost:5174/payment-failure`)
       }
     } catch (error) {
       console.error('Error while checking payment status:', error);
