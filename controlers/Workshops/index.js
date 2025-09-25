@@ -128,51 +128,50 @@ exports.getWorkshops = async (req, res) => {
 
 exports.updateWorkshop = async (req, res) => {
     try {
-        const { id } = req.params;
-        if (!isValidObjectId(id)) {
-            return res.status(400).json({ error: 'Invalid workshop ID' });
-        }
-
-        const updateData = { ...req.body };
-
-        if (updateData.date && isNaN(Date.parse(updateData.date))) {
-            return res.status(400).json({ error: 'Invalid date format' });
-        }
-        if (updateData.start_time && isNaN(Date.parse(updateData.start_time))) {
-            return res.status(400).json({ error: 'Invalid start_time format' });
-        }
-        if (updateData.end_time && isNaN(Date.parse(updateData.end_time))) {
-            return res.status(400).json({ error: 'Invalid end_time format' });
-        }
-
-        // Rename time fields for schema fields
-        if (updateData.start_time) {
-            updateData.start_at = new Date(updateData.start_time);
-            delete updateData.start_time;
-        }
-        if (updateData.end_time) {
-            updateData.end_at = new Date(updateData.end_time);
-            delete updateData.end_time;
-        }
-        if (updateData.date) {
-            updateData.date = new Date(updateData.date);
-        }
-
-        const updatedWorkshop = await Workshop.findByIdAndUpdate(id, updateData, {
-            new: true,
-            runValidators: true
-        });
-
-        if (!updatedWorkshop) {
-            return res.status(404).json({ error: 'Workshop not found' });
-        }
-
-        return res.json(updatedWorkshop);
+      const { id } = req.params;
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: 'Invalid workshop ID' });
+      }
+  
+      const updateData = { ...req.body };
+  
+      if (updateData.date && isNaN(Date.parse(updateData.date))) {
+        return res.status(400).json({ error: 'Invalid date format' });
+      }
+      if (updateData.start_time && isNaN(Date.parse(updateData.start_time))) {
+        return res.status(400).json({ error: 'Invalid start_time format' });
+      }
+      if (updateData.end_time && isNaN(Date.parse(updateData.end_time))) {
+        return res.status(400).json({ error: 'Invalid end_time format' });
+      }
+  
+      // Convert to Date objects without renaming fields
+      if (updateData.start_time) {
+        updateData.start_time = new Date(updateData.start_time);
+      }
+      if (updateData.end_time) {
+        updateData.end_time = new Date(updateData.end_time);
+      }
+      if (updateData.date) {
+        updateData.date = new Date(updateData.date);
+      }
+  
+      const updatedWorkshop = await Workshop.findByIdAndUpdate(id, updateData, {
+        new: true,
+        runValidators: true
+      });
+  
+      if (!updatedWorkshop) {
+        return res.status(404).json({ error: 'Workshop not found' });
+      }
+  
+      return res.json(updatedWorkshop);
     } catch (err) {
-        console.error('Update workshop error:', err);
-        return res.status(500).json({ error: 'Server error' });
+      console.error('Update workshop error:', err);
+      return res.status(500).json({ error: 'Server error' });
     }
-};
+  };
+  
 
 exports.cancelWorkshop = async (req, res) => {
     try {
