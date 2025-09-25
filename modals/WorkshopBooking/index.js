@@ -36,8 +36,8 @@ const bookingSchema = new Schema({
   },
   status: {
     type: String,
-    enum: ['CONFIRMED', 'CANCELLED'],
-    default: 'CONFIRMED',
+    enum: ['INITIATED', 'CONFIRMED', 'CANCELLED'],
+    default: 'INITIATED',
   }
 }, { timestamps: true });
 
