@@ -246,66 +246,22 @@ module.exports.addCoach = async (req, res) => {
 };
 
 
+
+// Controller: Get all coaches
 module.exports.getCoaches = async (req, res) => {
   try {
-    const searchTerm = req.query.q ? req.query.q.trim().toLowerCase() : "";
-
-    // Build the match criteria
-    const matchCriteria = {
-      role: "COACH",
-    };
-
-    if (searchTerm) {
-      const regex = new RegExp(searchTerm, "i"); // case-insensitive
-      matchCriteria.$or = [
-        { first_name: regex },
-        { last_name: regex },
-        { "email_data.temp_email_id": regex },
-      ];
-    }
-
-    // Use aggregation pipeline with safe field lookup
-    const coaches = await User.aggregate([
-      { $match: matchCriteria },
-      {
-        $lookup: {
-          from: "media", // Ensure this is the correct collection name
-          localField: "media", // Should be ObjectId or array of ObjectIds in User schema
-          foreignField: "_id", // Should be ObjectId in media schema
-          as: "media_details",
-        },
-      },
-      {
-        $project: {
-          first_name: 1,
-          last_name: 1,
-          email_data: 1,
-          phone_data: 1,
-          role: 1,
-          is_active: 1,
-          is_archived: 1,
-          media_details: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      },
-    ]);
-
-    // Respond with coach data
+    const coaches = await User.find({ role: "COACH" });
     return res.status(200).json({
       message: "Coaches fetched successfully",
       data: coaches,
     });
   } catch (error) {
-    console,log(error);
-    // Error logging and response
     return res.status(500).json({
       message: "Server error while fetching coaches",
-      error: error.message || error,
+      error,
     });
   }
-}
-
+};
 
 // Edit user (by admin only)
 module.exports.editUser = async (req, res) => {
@@ -346,13 +302,8 @@ module.exports.deleteUser = async (req, res) => {
   if (!errors.isEmpty()) {
     return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
   }
-  const token = req.get("Authorization");
-  let decodedToken = token ? jwt.decode(token) : null;
-
-  if (!decodedToken || decodedToken.role !== "ADMIN") {
-    return res.status(STATUS.UNAUTHORISED).json({
-      message: MESSAGE.unauthorized,
-    });
+  if (req.user.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({ message: "Only ADMIN can delete users" });
   }
 
   const userId = req.params.id;
