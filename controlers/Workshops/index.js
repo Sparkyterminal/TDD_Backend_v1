@@ -327,7 +327,7 @@ exports.bookWorkshop = async (req, res) => {
   
         // Optionally, send confirmation SMS here using updated data
   
-        return res.redirect(`http://localhost:5174/payment-success`);
+        return res.redirect(`http://localhost:5173/payment-success`);
       } else {
         await Booking.findOneAndUpdate(
           { _id: merchantOrderId },
@@ -338,7 +338,7 @@ exports.bookWorkshop = async (req, res) => {
           }
         );
   
-        return res.redirect(`http://localhost:5174/payment-failure`);
+        return res.redirect(`http://localhost:5173/payment-failure`);
       }
     } catch (error) {
       console.error('Error while checking payment status:', error);
