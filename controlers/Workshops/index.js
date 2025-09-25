@@ -220,12 +220,10 @@ exports.cancelWorkshop = async (req, res) => {
         return res.status(400).json({ error: 'Invalid workshopId' });
       }
   
-      // Validate age is positive number
       if (typeof age !== 'number' || age < 0) {
         return res.status(400).json({ error: 'Invalid age' });
       }
   
-      // Validate gender enum
       if (!['Male', 'Female', 'Other'].includes(gender)) {
         return res.status(400).json({ error: 'Invalid gender' });
       }
@@ -240,7 +238,7 @@ exports.cancelWorkshop = async (req, res) => {
         return res.status(400).json({ error: 'Workshop is not available for booking' });
       }
   
-      // Check capacity
+      // Check if capacity is reached
       const confirmedBookingsCount = await Booking.countDocuments({
         workshop: workshopId,
         status: 'CONFIRMED'
@@ -250,7 +248,7 @@ exports.cancelWorkshop = async (req, res) => {
         return res.status(400).json({ error: 'Workshop capacity reached' });
       }
   
-      // Create booking with status 'initiated' and empty paymentResult
+      // Create booking with status INITIATED
       const booking = new Booking({
         workshop: workshopId,
         name,
@@ -266,28 +264,26 @@ exports.cancelWorkshop = async (req, res) => {
   
       await booking.save();
   
-      // Prepare payment request
       const merchantOrderId = booking._id.toString();
       console.log('merchantOrderId:', merchantOrderId);
-      // Redirect URL - Adjust to your frontend or backend payment status API
-      const redirectUrl = `http://localhost:4044/workshop/payment-status?merchantOrderId=${merchantOrderId}`;
-      // Use production URL accordingly:
-      // const redirectUrl = `https://yourdomain.com/workshop/payment-status?merchantOrderId=${merchantOrderId}`;
   
-      // Price in paise (assuming price stored in workshop.price)
+      // Redirect URL to receive payment status
+      const redirectUrl = `http://localhost:4044/api/workshop/getStatusOfPayment?merchantOrderId=${merchantOrderId}`;
+      // In production, use your deployed backend URL instead
+  
+      // Price in paise (assumes price is in INR)
       const priceInPaise = Math.round((workshop.price || 0) * 100);
   
-      // Build payment request using your client
+      // Build payment request
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
         .redirectUrl(redirectUrl)
         .build();
   
-      // Send payment request
+      // Call payment client
       const paymentResponse = await client.pay(paymentRequest);
   
-      // Return booking info and payment checkout URL
       return res.status(201).json({
         message: 'Booking initiated. Please complete payment.',
         booking,
@@ -299,16 +295,17 @@ exports.cancelWorkshop = async (req, res) => {
       return res.status(500).json({ error: 'Server error' });
     }
   };
-
+  
   exports.getStatusOfPayment = async (req, res) => {
     console.log('getStatusOfPayment invoked with query:', req.query);
   
     try {
       const { merchantOrderId } = req.query;
       if (!merchantOrderId) {
-        return res.status(400).send("MerchantOrderId is required");
+        return res.status(400).send("merchantOrderId is required");
       }
   
+      // Retrieve payment status from your payment client
       const response = await client.getOrderStatus(merchantOrderId);
       const status = response.state;
   
@@ -318,7 +315,8 @@ exports.cancelWorkshop = async (req, res) => {
           {
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
-            'paymentResult.phonepeResponse': response
+            'paymentResult.phonepeResponse': response,
+            status: 'CONFIRMED' // update booking status on payment success
           },
           { new: true }
         );
@@ -327,22 +325,20 @@ exports.cancelWorkshop = async (req, res) => {
           return res.status(404).send("Booking submission not found");
         }
   
-        // Extract mobile number and name from booking document as per your schema
-        
-        // return res.redirect(`http://localhost:4044/payment-success`);
-        return res.redirect(`http://localhost:5174/payment-success`)
+        // Optionally, send confirmation SMS here using updated data
   
+        return res.redirect(`http://localhost:5174/payment-success`);
       } else {
         await Booking.findOneAndUpdate(
           { _id: merchantOrderId },
           {
             'paymentResult.status': 'FAILED',
             'paymentResult.phonepeResponse': response,
+            status: 'FAILED' // update booking status on failure
           }
         );
   
-        // return res.redirect(`http://localhost:4044/payment-failure`);
-        return res.redirect(`http://localhost:5174/payment-failure`)
+        return res.redirect(`http://localhost:5174/payment-failure`);
       }
     } catch (error) {
       console.error('Error while checking payment status:', error);
