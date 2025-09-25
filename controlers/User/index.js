@@ -248,6 +248,63 @@ module.exports.addCoach = async (req, res) => {
 
 
 // Controller: Get all coaches
+// module.exports.getCoaches = async (req, res) => {
+//   try {
+//     const searchTerm = req.query.q ? req.query.q.trim().toLowerCase() : "";
+
+//     // Build the match criteria
+//     const matchCriteria = {
+//       role: "COACH",
+//     };
+
+//     if (searchTerm) {
+//       const regex = new RegExp(searchTerm, "i"); // case-insensitive
+//       matchCriteria.$or = [
+//         { first_name: regex },
+//         { last_name: regex },
+//         { "email_data.temp_email_id": regex },
+//       ];
+//     }
+
+//     const coaches = await User.aggregate([
+//       { $match: matchCriteria },
+//       {
+//         $lookup: {
+//           from: "media",
+//           localField: "media",
+//           foreignField: "_id",
+//           as: "media_details",
+//         },
+//       },
+//       {
+//         $project: {
+//           first_name: 1,
+//           last_name: 1,
+//           email_data: 1,
+//           phone_data: 1,
+//           role: 1,
+//           is_active: 1,
+//           is_archived: 1,
+//           media_details: 1,
+//           createdAt: 1,
+//           updatedAt: 1,
+//         },
+//       },
+//     ]);
+
+//     return res.status(200).json({
+//       message: "Coaches fetched successfully",
+//       data: coaches,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       message: "Server error while fetching coaches",
+//       error,
+//     });
+//   }
+// };
+
+
 module.exports.getCoaches = async (req, res) => {
   try {
     const searchTerm = req.query.q ? req.query.q.trim().toLowerCase() : "";
@@ -266,13 +323,14 @@ module.exports.getCoaches = async (req, res) => {
       ];
     }
 
+    // Use aggregation pipeline with safe field lookup
     const coaches = await User.aggregate([
       { $match: matchCriteria },
       {
         $lookup: {
-          from: "media",
-          localField: "media",
-          foreignField: "_id",
+          from: "media", // Ensure this is the correct collection name
+          localField: "media", // Should be ObjectId or array of ObjectIds in User schema
+          foreignField: "_id", // Should be ObjectId in media schema
           as: "media_details",
         },
       },
@@ -292,18 +350,19 @@ module.exports.getCoaches = async (req, res) => {
       },
     ]);
 
+    // Respond with coach data
     return res.status(200).json({
       message: "Coaches fetched successfully",
       data: coaches,
     });
   } catch (error) {
+    // Error logging and response
     return res.status(500).json({
       message: "Server error while fetching coaches",
-      error,
+      error: error.message || error,
     });
   }
-};
-
+}
 
 
 // Edit user (by admin only)
