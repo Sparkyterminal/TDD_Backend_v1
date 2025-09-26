@@ -184,10 +184,10 @@ module.exports.getUser = async (req, res) => {
     }
 
     const userAgg = await User.aggregate([
-      { $match: { _id: mongoose.Types.ObjectId(id) } },
+      { $match: { _id: new mongoose.Types.ObjectId(id) } },
       {
         $lookup: {
-          from: "media",        // matches your media model collection
+          from: "media",
           localField: "media",
           foreignField: "_id",
           as: "media_details"
