@@ -15,19 +15,13 @@ const membershipPlanSchema = new Schema(
             type: Number,
             required: true
         },
-        // currency: {
-        //     type: String,
-        //     default: 'USD'
-        // },
+        
         billing_interval: {
             type: String,
             enum: ['MONTHLY', '3_MONTHS','6_MONTHS', 'YEARLY'],
             default: 'MONTHLY'
         },
-        // class_credits_per_interval: {
-        //     type: Number,
-        //     required: false
-        // },
+    
         benefits: {
             type: [String],
             default: []
