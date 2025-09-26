@@ -15,7 +15,9 @@ const membershipPlanSchema = new Schema(
             type: Number,
             required: true
         },
-        
+        paymentResult: {
+            status: String,
+          },
         billing_interval: {
             type: String,
             enum: ['MONTHLY', '3_MONTHS','6_MONTHS', 'YEARLY'],
