@@ -297,6 +297,143 @@ exports.cancelWorkshop = async (req, res) => {
 // };
   
 
+// exports.bookWorkshop = async (req, res) => {
+//   try {
+//     const { workshopId, name, age, email, mobile_number, gender } = req.body;
+
+//     // Validate required fields
+//     if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+//       return res.status(400).json({ error: 'Missing required fields' });
+//     }
+//     if (!isValidObjectId(workshopId)) {
+//       return res.status(400).json({ error: 'Invalid workshopId' });
+//     }
+//     if (typeof age !== 'number' || age < 0) {
+//       return res.status(400).json({ error: 'Invalid age' });
+//     }
+//     if (!['Male', 'Female', 'Other'].includes(gender)) {
+//       return res.status(400).json({ error: 'Invalid gender' });
+//     }
+
+//     // Atomic workshop find and capacity decrement
+//     const workshop = await Workshop.findOneAndUpdate(
+//       {
+//         _id: workshopId,
+//         is_cancelled: false,
+//         is_active: true,
+//         capacity: { $gt: 0 }
+//       },
+//       {
+//         $inc: { capacity: -1 }
+//       },
+//       {
+//         new: true
+//       }
+//     );
+
+//     if (!workshop) {
+//       return res.status(400).json({ error: 'No more slots available for booking or workshop is unavailable.' });
+//     }
+
+//     // Create booking with status INITIATED
+//     const booking = new Booking({
+//       workshop: workshopId,
+//       name,
+//       age,
+//       email,
+//       mobile_number,
+//       gender,
+//       status: 'INITIATED',   // payment pending
+//       paymentResult: {
+//         status: 'initiated'
+//       }
+//     });
+
+//     await booking.save();
+
+//     const merchantOrderId = booking._id.toString();
+//     console.log('merchantOrderId:', merchantOrderId);
+
+//     // Redirect URL to receive payment status
+//     const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+//     // In production, use your deployed backend URL instead
+
+//     // Price in paise (assumes price is in INR)
+//     const priceInPaise = Math.round((workshop.price || 0) * 100);
+
+//     // Build payment request
+//     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//       .merchantOrderId(merchantOrderId)
+//       .amount(priceInPaise)
+//       .redirectUrl(redirectUrl)
+//       .build();
+
+//     // Call payment client
+//     const paymentResponse = await client.pay(paymentRequest);
+
+//     return res.status(201).json({
+//       message: 'Booking initiated. Please complete payment.',
+//       booking,
+//       checkoutPageUrl: paymentResponse.redirectUrl,
+//     });
+
+//   } catch (error) {
+//     console.error('Error in booking workshop:', error);
+//     return res.status(500).json({ error: 'Server error' });
+//   }
+// };
+
+//   exports.getStatusOfPayment = async (req, res) => {
+//     console.log('getStatusOfPayment invoked with query:', req.query);
+  
+//     try {
+//       const { merchantOrderId } = req.query;
+//       if (!merchantOrderId) {
+//         return res.status(400).send("merchantOrderId is required");
+//       }
+  
+//       // Retrieve payment status from your payment client
+//       const response = await client.getOrderStatus(merchantOrderId);
+//       const status = response.state;
+  
+//       if (status === 'COMPLETED') {
+//         const updated = await Booking.findOneAndUpdate(
+//           { _id: merchantOrderId },
+//           {
+//             'paymentResult.status': 'COMPLETED',
+//             'paymentResult.paymentDate': new Date(),
+//             'paymentResult.phonepeResponse': response,
+//             status: 'CONFIRMED' // update booking status on payment success
+//           },
+//           { new: true }
+//         );
+  
+//         if (!updated) {
+//           return res.status(404).send("Booking submission not found");
+//         }
+  
+//         // Optionally, send confirmation SMS here using updated data
+  
+//         return res.redirect(`http://localhost:5173/payment-success`);
+//       } else {
+//         await Booking.findOneAndUpdate(
+//           { _id: merchantOrderId },
+//           {
+//             'paymentResult.status': 'FAILED',
+//             'paymentResult.phonepeResponse': response,
+//             status: 'FAILED' // update booking status on failure
+//           }
+//         );
+  
+//         return res.redirect(`http://localhost:5173/payment-failure`);
+//       }
+//     } catch (error) {
+//       console.error('Error while checking payment status:', error);
+//       return res.status(500).send('Internal server error during payment status check');
+//     }
+//   };
+  
+  
 exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, name, age, email, mobile_number, gender } = req.body;
@@ -315,27 +452,23 @@ exports.bookWorkshop = async (req, res) => {
       return res.status(400).json({ error: 'Invalid gender' });
     }
 
-    // Atomic workshop find and capacity decrement
-    const workshop = await Workshop.findOneAndUpdate(
-      {
-        _id: workshopId,
-        is_cancelled: false,
-        is_active: true,
-        capacity: { $gt: 0 }
-      },
-      {
-        $inc: { capacity: -1 }
-      },
-      {
-        new: true
-      }
-    );
+    // Get latest workshop document
+    const workshop = await Workshop.findOne({
+      _id: workshopId,
+      is_cancelled: false,
+      is_active: true,
+    });
 
     if (!workshop) {
-      return res.status(400).json({ error: 'No more slots available for booking or workshop is unavailable.' });
+      return res.status(404).json({ error: 'Workshop not found or unavailable.' });
     }
 
-    // Create booking with status INITIATED
+    // Check for capacity (do not decrement here)
+    if (workshop.capacity && workshop.capacity <= 0) {
+      return res.status(400).json({ error: 'No more slots available for booking.' });
+    }
+
+    // Create booking with status INITIATED (pending payment)
     const booking = new Booking({
       workshop: workshopId,
       name,
@@ -343,7 +476,7 @@ exports.bookWorkshop = async (req, res) => {
       email,
       mobile_number,
       gender,
-      status: 'INITIATED',   // payment pending
+      status: 'INITIATED',
       paymentResult: {
         status: 'initiated'
       }
@@ -383,54 +516,81 @@ exports.bookWorkshop = async (req, res) => {
   }
 };
 
-  exports.getStatusOfPayment = async (req, res) => {
-    console.log('getStatusOfPayment invoked with query:', req.query);
-  
-    try {
-      const { merchantOrderId } = req.query;
-      if (!merchantOrderId) {
-        return res.status(400).send("merchantOrderId is required");
+exports.getStatusOfPayment = async (req, res) => {
+  console.log('getStatusOfPayment invoked with query:', req.query);
+
+  try {
+    const { merchantOrderId } = req.query;
+    if (!merchantOrderId) {
+      return res.status(400).send("merchantOrderId is required");
+    }
+
+    // Retrieve payment status from your payment client
+    const response = await client.getOrderStatus(merchantOrderId);
+    const status = response.state;
+
+    if (status === 'COMPLETED') {
+      // Find the booking and related workshop
+      const booking = await Booking.findById(merchantOrderId);
+      if (!booking) {
+        return res.status(404).send("Booking submission not found");
       }
-  
-      // Retrieve payment status from your payment client
-      const response = await client.getOrderStatus(merchantOrderId);
-      const status = response.state;
-  
-      if (status === 'COMPLETED') {
-        const updated = await Booking.findOneAndUpdate(
-          { _id: merchantOrderId },
-          {
-            'paymentResult.status': 'COMPLETED',
-            'paymentResult.paymentDate': new Date(),
-            'paymentResult.phonepeResponse': response,
-            status: 'CONFIRMED' // update booking status on payment success
-          },
-          { new: true }
-        );
-  
-        if (!updated) {
-          return res.status(404).send("Booking submission not found");
-        }
-  
-        // Optionally, send confirmation SMS here using updated data
-  
-        return res.redirect(`http://localhost:5173/payment-success`);
-      } else {
-        await Booking.findOneAndUpdate(
-          { _id: merchantOrderId },
+
+      // Decrement capacity ONLY NOW (payment success), atomically
+      const workshop = await Workshop.findOneAndUpdate(
+        {
+          _id: booking.workshop,
+          is_cancelled: false,
+          is_active: true,
+          capacity: { $gt: 0 }
+        },
+        {
+          $inc: { capacity: -1 }
+        },
+        { new: true }
+      );
+
+      if (!workshop) {
+        // Capacity already full, update booking as failed and redirect failure
+        await Booking.findByIdAndUpdate(
+          merchantOrderId,
           {
             'paymentResult.status': 'FAILED',
             'paymentResult.phonepeResponse': response,
-            status: 'FAILED' // update booking status on failure
+            status: 'FAILED'
           }
         );
-  
         return res.redirect(`http://localhost:5173/payment-failure`);
       }
-    } catch (error) {
-      console.error('Error while checking payment status:', error);
-      return res.status(500).send('Internal server error during payment status check');
+
+      // Mark booking as CONFIRMED
+      await Booking.findByIdAndUpdate(
+        merchantOrderId,
+        {
+          'paymentResult.status': 'COMPLETED',
+          'paymentResult.paymentDate': new Date(),
+          'paymentResult.phonepeResponse': response,
+          status: 'CONFIRMED'
+        }
+      );
+
+      // Optionally, send confirmation SMS here using updated data
+
+      return res.redirect(`http://localhost:5173/payment-success`);
+    } else {
+      await Booking.findByIdAndUpdate(
+        merchantOrderId,
+        {
+          'paymentResult.status': 'FAILED',
+          'paymentResult.phonepeResponse': response,
+          status: 'FAILED'
+        }
+      );
+
+      return res.redirect(`http://localhost:5173/payment-failure`);
     }
-  };
-  
-  
+  } catch (error) {
+    console.error('Error while checking payment status:', error);
+    return res.status(500).send('Internal server error during payment status check');
+  }
+};
