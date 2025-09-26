@@ -190,7 +190,7 @@ module.exports.getUser = async (req, res) => {
           from: "media",
           localField: "media",
           foreignField: "_id",
-          as: "media_details"
+          as: "media"
         }
       },
       {
