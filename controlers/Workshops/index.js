@@ -207,95 +207,182 @@ exports.cancelWorkshop = async (req, res) => {
   };
 
 
+// exports.bookWorkshop = async (req, res) => {
+//     try {
+//       const { workshopId, name, age, email, mobile_number, gender } = req.body;
+  
+//       // Validate required fields
+//       if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+//         return res.status(400).json({ error: 'Missing required fields' });
+//       }
+  
+//       if (!isValidObjectId(workshopId)) {
+//         return res.status(400).json({ error: 'Invalid workshopId' });
+//       }
+  
+//       if (typeof age !== 'number' || age < 0) {
+//         return res.status(400).json({ error: 'Invalid age' });
+//       }
+  
+//       if (!['Male', 'Female', 'Other'].includes(gender)) {
+//         return res.status(400).json({ error: 'Invalid gender' });
+//       }
+  
+//       // Find workshop
+//       const workshop = await Workshop.findById(workshopId);
+//       if (!workshop) {
+//         return res.status(404).json({ error: 'Workshop not found' });
+//       }
+  
+//       if (workshop.is_cancelled || !workshop.is_active) {
+//         return res.status(400).json({ error: 'Workshop is not available for booking' });
+//       }
+  
+//       // Check if capacity is reached
+//       const confirmedBookingsCount = await Booking.countDocuments({
+//         workshop: workshopId,
+//         status: 'CONFIRMED'
+//       });
+  
+//       if (workshop.capacity && confirmedBookingsCount >= workshop.capacity) {
+//         return res.status(400).json({ error: 'Workshop capacity reached' });
+//       }
+  
+//       // Create booking with status INITIATED
+//       const booking = new Booking({
+//         workshop: workshopId,
+//         name,
+//         age,
+//         email,
+//         mobile_number,
+//         gender,
+//         status: 'INITIATED',   // payment pending
+//         paymentResult: {
+//           status: 'initiated'
+//         }
+//       });
+  
+//       await booking.save();
+  
+//       const merchantOrderId = booking._id.toString();
+//       console.log('merchantOrderId:', merchantOrderId);
+  
+//       // Redirect URL to receive payment status
+//       const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+//       // In production, use your deployed backend URL instead
+  
+//       // Price in paise (assumes price is in INR)
+//       const priceInPaise = Math.round((workshop.price || 0) * 100);
+  
+//       // Build payment request
+//       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//         .merchantOrderId(merchantOrderId)
+//         .amount(priceInPaise)
+//         .redirectUrl(redirectUrl)
+//         .build();
+  
+//       // Call payment client
+//       const paymentResponse = await client.pay(paymentRequest);
+  
+//       return res.status(201).json({
+//         message: 'Booking initiated. Please complete payment.',
+//         booking,
+//         checkoutPageUrl: paymentResponse.redirectUrl,
+//       });
+  
+//     } catch (error) {
+//       console.error('Error in booking workshop:', error);
+//       return res.status(500).json({ error: 'Server error' });
+//     }
+// };
+  
+
 exports.bookWorkshop = async (req, res) => {
-    try {
-      const { workshopId, name, age, email, mobile_number, gender } = req.body;
-  
-      // Validate required fields
-      if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
-        return res.status(400).json({ error: 'Missing required fields' });
-      }
-  
-      if (!isValidObjectId(workshopId)) {
-        return res.status(400).json({ error: 'Invalid workshopId' });
-      }
-  
-      if (typeof age !== 'number' || age < 0) {
-        return res.status(400).json({ error: 'Invalid age' });
-      }
-  
-      if (!['Male', 'Female', 'Other'].includes(gender)) {
-        return res.status(400).json({ error: 'Invalid gender' });
-      }
-  
-      // Find workshop
-      const workshop = await Workshop.findById(workshopId);
-      if (!workshop) {
-        return res.status(404).json({ error: 'Workshop not found' });
-      }
-  
-      if (workshop.is_cancelled || !workshop.is_active) {
-        return res.status(400).json({ error: 'Workshop is not available for booking' });
-      }
-  
-      // Check if capacity is reached
-      const confirmedBookingsCount = await Booking.countDocuments({
-        workshop: workshopId,
-        status: 'CONFIRMED'
-      });
-  
-      if (workshop.capacity && confirmedBookingsCount >= workshop.capacity) {
-        return res.status(400).json({ error: 'Workshop capacity reached' });
-      }
-  
-      // Create booking with status INITIATED
-      const booking = new Booking({
-        workshop: workshopId,
-        name,
-        age,
-        email,
-        mobile_number,
-        gender,
-        status: 'INITIATED',   // payment pending
-        paymentResult: {
-          status: 'initiated'
-        }
-      });
-  
-      await booking.save();
-  
-      const merchantOrderId = booking._id.toString();
-      console.log('merchantOrderId:', merchantOrderId);
-  
-      // Redirect URL to receive payment status
-      const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
-      // In production, use your deployed backend URL instead
-  
-      // Price in paise (assumes price is in INR)
-      const priceInPaise = Math.round((workshop.price || 0) * 100);
-  
-      // Build payment request
-      const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
-        .merchantOrderId(merchantOrderId)
-        .amount(priceInPaise)
-        .redirectUrl(redirectUrl)
-        .build();
-  
-      // Call payment client
-      const paymentResponse = await client.pay(paymentRequest);
-  
-      return res.status(201).json({
-        message: 'Booking initiated. Please complete payment.',
-        booking,
-        checkoutPageUrl: paymentResponse.redirectUrl,
-      });
-  
-    } catch (error) {
-      console.error('Error in booking workshop:', error);
-      return res.status(500).json({ error: 'Server error' });
+  try {
+    const { workshopId, name, age, email, mobile_number, gender } = req.body;
+
+    // Validate required fields
+    if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
-  };
-  
+    if (!isValidObjectId(workshopId)) {
+      return res.status(400).json({ error: 'Invalid workshopId' });
+    }
+    if (typeof age !== 'number' || age < 0) {
+      return res.status(400).json({ error: 'Invalid age' });
+    }
+    if (!['Male', 'Female', 'Other'].includes(gender)) {
+      return res.status(400).json({ error: 'Invalid gender' });
+    }
+
+    // Atomic workshop find and capacity decrement
+    const workshop = await Workshop.findOneAndUpdate(
+      {
+        _id: workshopId,
+        is_cancelled: false,
+        is_active: true,
+        capacity: { $gt: 0 }
+      },
+      {
+        $inc: { capacity: -1 }
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!workshop) {
+      return res.status(400).json({ error: 'No more slots available for booking or workshop is unavailable.' });
+    }
+
+    // Create booking with status INITIATED
+    const booking = new Booking({
+      workshop: workshopId,
+      name,
+      age,
+      email,
+      mobile_number,
+      gender,
+      status: 'INITIATED',   // payment pending
+      paymentResult: {
+        status: 'initiated'
+      }
+    });
+
+    await booking.save();
+
+    const merchantOrderId = booking._id.toString();
+    console.log('merchantOrderId:', merchantOrderId);
+
+    // Redirect URL to receive payment status
+    const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+    // In production, use your deployed backend URL instead
+
+    // Price in paise (assumes price is in INR)
+    const priceInPaise = Math.round((workshop.price || 0) * 100);
+
+    // Build payment request
+    const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+      .merchantOrderId(merchantOrderId)
+      .amount(priceInPaise)
+      .redirectUrl(redirectUrl)
+      .build();
+
+    // Call payment client
+    const paymentResponse = await client.pay(paymentRequest);
+
+    return res.status(201).json({
+      message: 'Booking initiated. Please complete payment.',
+      booking,
+      checkoutPageUrl: paymentResponse.redirectUrl,
+    });
+
+  } catch (error) {
+    console.error('Error in booking workshop:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
   exports.getStatusOfPayment = async (req, res) => {
     console.log('getStatusOfPayment invoked with query:', req.query);
   
