@@ -389,11 +389,20 @@ module.exports.editUser = async (req, res) => {
 
   const userId = req.params.id;
   const updates = {};
-  if (req.body.first_name) updates.first_name = req.body.first_name.toLowerCase().replaceAll(/\s/g, "");
-  if (req.body.last_name) updates.last_name = req.body.last_name.toLowerCase().replaceAll(/\s/g, "");
+  if (req.body.first_name) updates.first_name = req.body.first_name.toLowerCase().replace(/\s/g, "");
+  if (req.body.last_name) updates.last_name = req.body.last_name.toLowerCase().replace(/\s/g, "");
   if (req.body.email_id) updates["email_data.temp_email_id"] = req.body.email_id.toLowerCase();
   if (req.body.password) updates.password = await bcrypt.hash(req.body.password, 12);
   if (req.body.role) updates.role = req.body.role;
+
+  // Check and update media array if provided
+  if (req.body.media) {
+    // Expect media as an array of ObjectId strings, validate if needed
+    if (!Array.isArray(req.body.media)) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: "media must be an array of IDs" });
+    }
+    updates.media = req.body.media;
+  }
 
   try {
     const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true });
@@ -403,6 +412,7 @@ module.exports.editUser = async (req, res) => {
     return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ message: MESSAGE.internalServerError, error });
   }
 };
+
 
 // Delete user (by admin only)
 module.exports.deleteUser = async (req, res) => {
