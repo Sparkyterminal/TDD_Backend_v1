@@ -175,19 +175,46 @@ module.exports.loginUsingEmail = async (req,res) => {
   }
 };
 
-module.exports.getUsers = async (req, res) => {
+module.exports.getUser = async (req, res) => {
   try {
     const id = req.params.id;
-    if (id) {
-      const user = await User.findById(id);
-      if (!user) return res.status(STATUS.NOT_FOUND).json({ message: "User not found" });
-      return res.status(STATUS.SUCCESS).json({ data: user });
-    } else {
-      const users = await User.find();
-      return res.status(STATUS.SUCCESS).json({ data: users });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ message: "Invalid user ID" });
     }
+
+    const userAgg = await User.aggregate([
+      { $match: { _id: mongoose.Types.ObjectId(id) } },
+      {
+        $lookup: {
+          from: "media",
+          localField: "media",
+          foreignField: "_id",
+          as: "media_details"
+        }
+      },
+      {
+        $project: {
+          first_name: 1,
+          last_name: 1,
+          email_data: 1,
+          phone_data: 1,
+          role: 1,
+          is_active: 1,
+          is_archived: 1,
+          media_details: 1,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      }
+    ]);
+
+    if (!userAgg || userAgg.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({ data: userAgg[0] });
   } catch (error) {
-    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ message: MESSAGE.internalServerError, error });
+    return res.status(500).json({ message: "Internal server error", error });
   }
 };
 
