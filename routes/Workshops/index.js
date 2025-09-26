@@ -9,6 +9,7 @@ router.get('/check-status', workshopController.getStatusOfPayment);
 router.get('/:id', workshopController.getWorkshop);
 router.put('/:id', workshopController.updateWorkshop);
 router.delete('/:id', workshopController.cancelWorkshop);
+router.get('/:workshopId/bookings', workshopController.getConfirmedBookings);
 
 
 module.exports = router;
