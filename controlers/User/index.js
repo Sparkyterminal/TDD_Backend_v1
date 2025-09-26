@@ -4,6 +4,7 @@ const MESSAGE = require("../../utils/messages");
 const User = require("../../modals/Users");
 const { validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
+const mongoose = require('mongoose');
 
 
 const jwt = require("jsonwebtoken");
