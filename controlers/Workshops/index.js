@@ -369,7 +369,7 @@ exports.getStatusOfPayment = async (req, res) => {
 
 exports.getConfirmedBookings = async (req, res) => {
   try {
-    const { workshopId } = req.params;
+    const { id: workshopId } = req.params;  // get 'id' param as workshopId
     if (!isValidObjectId(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
     }
@@ -377,9 +377,7 @@ exports.getConfirmedBookings = async (req, res) => {
     const bookings = await Booking.find({
       workshop: workshopId,
       status: 'CONFIRMED'
-    })
-    .populate('workshop')  // Populate all workshop fields; or specify fields e.g. 'title date price'
-    .sort({ bookedAt: -1 });
+    }).populate('workshop').sort({ bookedAt: -1 });
 
     return res.status(200).json({ confirmedBookings: bookings });
   } catch (error) {
