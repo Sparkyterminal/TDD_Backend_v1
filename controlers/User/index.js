@@ -202,7 +202,7 @@ module.exports.getUser = async (req, res) => {
           role: 1,
           is_active: 1,
           is_archived: 1,
-          media_details: 1,
+          media: 1,
           createdAt: 1,
           updatedAt: 1
         }
