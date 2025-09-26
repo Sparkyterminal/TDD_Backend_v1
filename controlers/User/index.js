@@ -186,7 +186,7 @@ module.exports.getUser = async (req, res) => {
       { $match: { _id: mongoose.Types.ObjectId(id) } },
       {
         $lookup: {
-          from: "media",
+          from: "media",        // matches your media model collection
           localField: "media",
           foreignField: "_id",
           as: "media_details"
@@ -214,6 +214,7 @@ module.exports.getUser = async (req, res) => {
 
     return res.status(200).json({ data: userAgg[0] });
   } catch (error) {
+    console.error('Aggregation error:', error);
     return res.status(500).json({ message: "Internal server error", error });
   }
 };
