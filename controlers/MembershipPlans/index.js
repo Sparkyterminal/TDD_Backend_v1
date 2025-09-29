@@ -236,28 +236,8 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ error: 'Membership plan not found or inactive' });
         }
 
-        let user = await User.findOne({ 'email_data.email_id': email });
-        if (!user) {
-            const [firstName, ...rest] = name.trim().split(/\s+/);
-            const lastName = rest.join(' ');
-            const password = `${firstName}@123`;
-
-            user = await User.create({
-                first_name: firstName || name,
-                last_name: lastName || '',
-                media: [],
-                email_data: { email_id: email, is_validated: false },
-                phone_data: { phone_number: mobile_number, is_validated: false },
-                role: 'USER',
-                password,
-                is_active: true,
-                is_archived: false
-            });
-        }
-
-        // Create booking with initial status in paymentResult
+        // Create booking before payment (no user yet)
         const booking = await MembershipBooking.create({
-            user: user._id,
             plan: plan._id,
             name,
             age,
@@ -282,8 +262,7 @@ exports.createBooking = async (req, res) => {
         return res.status(201).json({
             message: 'Membership booking initiated. Please complete payment.',
             booking,
-            checkoutPageUrl: paymentResponse.redirectUrl,
-            user_id: user._id
+            checkoutPageUrl: paymentResponse.redirectUrl
         });
     } catch (err) {
         console.error('Create membership booking error:', err);
@@ -308,9 +287,30 @@ exports.checkMembershipStatus = async (req, res) => {
         }
 
         if (status === 'COMPLETED') {
+            // Create user only now (post-payment) if not exists, then attach to booking
+            let user = await User.findOne({ 'email_data.email_id': booking.email });
+            if (!user) {
+                const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+                const lastName = rest.join(' ');
+                const password = `${firstName || 'User'}@123`;
+
+                user = await User.create({
+                    first_name: firstName || booking.name || 'User',
+                    last_name: lastName || '',
+                    media: [],
+                    email_data: { email_id: booking.email, is_validated: false },
+                    phone_data: { phone_number: booking.mobile_number, is_validated: false },
+                    role: 'USER',
+                    password,
+                    is_active: true,
+                    is_archived: false
+                });
+            }
+
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
+                    user: user._id,
                     'paymentResult.status': 'COMPLETED',
                     'paymentResult.paymentDate': new Date(),
                     'paymentResult.phonepeResponse': response

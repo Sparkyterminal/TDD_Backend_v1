@@ -15,7 +15,7 @@ const membershipBookingSchema = new Schema(
         user: {
             type: ObjectId,
             ref: 'user',
-            required: true
+            required: false
         },
         plan: {
             type: ObjectId,
