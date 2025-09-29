@@ -7,6 +7,8 @@ router.get('/', plansController.getPlans);
 router.get('/:id', plansController.getPlanById);
 router.put('/:id', plansController.updatePlan);
 router.delete('/:id', plansController.deletePlan);
+router.post('/booking', plansController.createBooking);
+router.get('/check-status', plansController.checkMembershipStatus);
 
 module.exports = router;
 
