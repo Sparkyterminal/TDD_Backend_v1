@@ -17,7 +17,7 @@ function pick(obj, allowed) {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, price, billing_interval, benefits, is_active } = req.body;
+        const { name, description, price, billing_interval, benefits, is_active, plan_for } = req.body;
 
         if (!name || typeof name !== 'string') {
             return res.status(400).json({ error: 'Valid name is required' });
@@ -32,6 +32,12 @@ exports.createPlan = async (req, res) => {
         if (benefits && !Array.isArray(benefits)) {
             return res.status(400).json({ error: 'benefits must be an array of strings' });
         }
+        if (plan_for !== undefined) {
+            const allowedAudiences = ['KIDS', 'ADULTS'];
+            if (!allowedAudiences.includes(plan_for)) {
+                return res.status(400).json({ error: 'Invalid plan_for' });
+            }
+        }
 
         const plan = await MembershipPlan.create({
             name,
@@ -39,6 +45,7 @@ exports.createPlan = async (req, res) => {
             price,
             billing_interval: billing_interval || 'MONTHLY',
             benefits: benefits || [],
+            plan_for: plan_for || 'ADULTS',
             is_active: is_active !== undefined ? !!is_active : true
         });
 
@@ -58,7 +65,8 @@ exports.getPlans = async (req, res) => {
             sortOrder = 'desc',
             is_active,
             interval,
-            q
+            q,
+            plan_for
         } = req.query;
 
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -76,6 +84,10 @@ exports.getPlans = async (req, res) => {
         if (interval) {
             const intervals = ['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'];
             if (intervals.includes(interval)) filter.billing_interval = interval;
+        }
+        if (plan_for) {
+            const allowedAudiences = ['KIDS', 'ADULTS'];
+            if (allowedAudiences.includes(plan_for)) filter.plan_for = plan_for;
         }
         if (q && typeof q === 'string' && q.trim()) {
             const pattern = new RegExp(q.trim(), 'i');
@@ -128,7 +140,7 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
 
-        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active'];
+        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for'];
         const updateData = pick(req.body, allowed);
 
         if (updateData.price !== undefined) {
@@ -144,6 +156,12 @@ exports.updatePlan = async (req, res) => {
         }
         if (updateData.benefits !== undefined && !Array.isArray(updateData.benefits)) {
             return res.status(400).json({ error: 'benefits must be an array' });
+        }
+        if (updateData.plan_for !== undefined) {
+            const allowedAudiences = ['KIDS', 'ADULTS'];
+            if (!allowedAudiences.includes(updateData.plan_for)) {
+                return res.status(400).json({ error: 'Invalid plan_for' });
+            }
         }
 
         const updated = await MembershipPlan.findByIdAndUpdate(
