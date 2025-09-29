@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
 const MembershipPlan = require('../../modals/MembershipPlans');
+const MembershipBooking = require('../../modals/MembershipBooking');
+const User = require('../../modals/Users');
+const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
+const clientId = process.env.CLIENT_ID
+const clientSecret = process.env.CLIENT_SECRET
+const env = Env.SANDBOX
+
+const client = new StandardCheckoutClient(clientId, clientSecret, env)
 
 function isValidObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id);
@@ -198,3 +206,129 @@ exports.deletePlan = async (req, res) => {
 };
 
 
+
+exports.createBooking = async (req, res) => {
+    try {
+        const { planId, name, age, email, mobile_number, gender, paymentResult } = req.body;
+
+        if (!isValidObjectId(planId)) {
+            return res.status(400).json({ error: 'Invalid planId' });
+        }
+        if (!name || typeof name !== 'string') {
+            return res.status(400).json({ error: 'Valid name is required' });
+        }
+        if (age === undefined || typeof age !== 'number' || age < 0) {
+            return res.status(400).json({ error: 'Valid age is required' });
+        }
+        if (!email || typeof email !== 'string') {
+            return res.status(400).json({ error: 'Valid email is required' });
+        }
+        if (!mobile_number || typeof mobile_number !== 'string') {
+            return res.status(400).json({ error: 'Valid mobile_number is required' });
+        }
+        const allowedGenders = ['Male', 'Female', 'Other'];
+        if (!gender || !allowedGenders.includes(gender)) {
+            return res.status(400).json({ error: 'Valid gender is required' });
+        }
+
+        const plan = await MembershipPlan.findById(planId).lean();
+        if (!plan || plan.is_active === false) {
+            return res.status(404).json({ error: 'Membership plan not found or inactive' });
+        }
+
+        let user = await User.findOne({ 'email_data.email_id': email });
+        if (!user) {
+            const [firstName, ...rest] = name.trim().split(/\s+/);
+            const lastName = rest.join(' ');
+            const password = `${firstName}@123`;
+
+            user = await User.create({
+                first_name: firstName || name,
+                last_name: lastName || '',
+                media: [],
+                email_data: { email_id: email, is_validated: false },
+                phone_data: { phone_number: mobile_number, is_validated: false },
+                role: 'USER',
+                password,
+                is_active: true,
+                is_archived: false
+            });
+        }
+
+        // Create booking with initial status in paymentResult
+        const booking = await MembershipBooking.create({
+            user: user._id,
+            plan: plan._id,
+            name,
+            age,
+            email,
+            mobile_number,
+            gender,
+            paymentResult: paymentResult || { status: 'initiated' }
+        });
+
+        const merchantOrderId = booking._id.toString();
+        const redirectUrl = `http://localhost:4044/membership/check-status?merchantOrderId=${merchantOrderId}`;
+        const priceInPaise = Math.round((plan.price || 0) * 100);
+
+        const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+            .merchantOrderId(merchantOrderId)
+            .amount(priceInPaise)
+            .redirectUrl(redirectUrl)
+            .build();
+
+        const paymentResponse = await client.pay(paymentRequest);
+
+        return res.status(201).json({
+            message: 'Membership booking initiated. Please complete payment.',
+            booking,
+            checkoutPageUrl: paymentResponse.redirectUrl,
+            user_id: user._id
+        });
+    } catch (err) {
+        console.error('Create membership booking error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+exports.checkMembershipStatus = async (req, res) => {
+    console.log('checkMembershipStatus invoked with query:', req.query);
+    try {
+        const { merchantOrderId } = req.query;
+        if (!merchantOrderId) {
+            return res.status(400).send('merchantOrderId is required');
+        }
+
+        const response = await client.getOrderStatus(merchantOrderId);
+        const status = response.state;
+
+        const booking = await MembershipBooking.findById(merchantOrderId);
+        if (!booking) {
+            return res.status(404).send('Booking not found');
+        }
+
+        if (status === 'COMPLETED') {
+            await MembershipBooking.findByIdAndUpdate(
+                merchantOrderId,
+                {
+                    'paymentResult.status': 'COMPLETED',
+                    'paymentResult.paymentDate': new Date(),
+                    'paymentResult.phonepeResponse': response
+                }
+            );
+            return res.redirect(`http://localhost:5173/payment-success`);
+        } else {
+            await MembershipBooking.findByIdAndUpdate(
+                merchantOrderId,
+                {
+                    'paymentResult.status': 'FAILED',
+                    'paymentResult.phonepeResponse': response
+                }
+            );
+            return res.redirect(`http://localhost:5173/payment-failure`);
+        }
+    } catch (err) {
+        console.error('Check membership status error:', err);
+        return res.status(500).send('Internal server error during payment status check');
+    }
+};
