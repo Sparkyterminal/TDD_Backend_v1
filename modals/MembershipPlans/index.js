@@ -23,7 +23,11 @@ const membershipPlanSchema = new Schema(
             enum: ['MONTHLY', '3_MONTHS','6_MONTHS', 'YEARLY'],
             default: 'MONTHLY'
         },
-    
+        plan_for: {
+            type: String,
+            enum: ['KIDS', 'ADULTS'],
+            default: 'ADULTS'
+        },
         benefits: {
             type: [String],
             default: []
