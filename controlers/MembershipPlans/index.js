@@ -248,7 +248,7 @@ exports.createBooking = async (req, res) => {
         });
 
         const merchantOrderId = booking._id.toString();
-        const redirectUrl = `http://localhost:4044/membership/check-status?merchantOrderId=${merchantOrderId}`;
+        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
         const priceInPaise = Math.round((plan.price || 0) * 100);
 
         const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
