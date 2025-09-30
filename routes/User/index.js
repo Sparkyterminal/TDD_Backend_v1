@@ -55,7 +55,7 @@ router.post(
 );
 
 
-router.get('/coaches', isAuth, userController.getCoaches);
+router.get('/coaches', userController.getCoaches);
 router.get('/:id', isAuth, userController.getUser);
 
 // Edit user (admin only)
