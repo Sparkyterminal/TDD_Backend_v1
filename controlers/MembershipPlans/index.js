@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const MembershipPlan = require('../../modals/MembershipPlans');
 const MembershipBooking = require('../../modals/MembershipBooking');
 const User = require('../../modals/Users');
+const bcrypt = require('bcryptjs');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
@@ -293,6 +294,7 @@ exports.checkMembershipStatus = async (req, res) => {
                 const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
                 const lastName = rest.join(' ');
                 const password = `${firstName || 'User'}@123`;
+                const hashedPassword = await bcrypt.hash(password, 10);
 
                 user = await User.create({
                     first_name: firstName || booking.name || 'User',
@@ -301,7 +303,7 @@ exports.checkMembershipStatus = async (req, res) => {
                     email_data: { temp_email_id: booking.email, is_validated: true },
                     phone_data: { phone_number: booking.mobile_number, is_validated: true },
                     role: 'USER',
-                    password,
+                    password: hashedPassword,
                     is_active: true,
                     is_archived: false
                 });
