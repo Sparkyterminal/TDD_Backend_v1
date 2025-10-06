@@ -120,11 +120,11 @@ module.exports.loginUsingEmail = async (req,res) => {
     } else {
       let loadedUser = user;
 
-      if(loadedUser.role === "TNO"){
-        return res.status(STATUS.BAD_REQUEST).json({
-          message: "Login using KGID",
-        });
-      }
+      // if(loadedUser.role === "USER"){
+      //   return res.status(STATUS.BAD_REQUEST).json({
+      //     message: "Login using KGID",
+      //   });
+      // }
 
       let isValidPassword = await bcrypt.compare(password, user.password);
 
