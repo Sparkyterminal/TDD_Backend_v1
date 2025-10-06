@@ -112,6 +112,8 @@ module.exports.loginUsingEmail = async (req,res) => {
     let user = await User.findOne({ "email_data.temp_email_id": email });
 
 
+    console.log(user)
+
 
     if (!user) {
       return res.status(STATUS.NOT_FOUND).json({
