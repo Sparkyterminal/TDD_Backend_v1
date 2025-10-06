@@ -298,7 +298,7 @@ exports.checkMembershipStatus = async (req, res) => {
                     first_name: firstName || booking.name || 'User',
                     last_name: lastName || '',
                     media: [],
-                    email_data: { email_id: booking.email, is_validated: true },
+                    email_data: { temp_email_id: booking.email, is_validated: true },
                     phone_data: { phone_number: booking.mobile_number, is_validated: true },
                     role: 'USER',
                     password,
