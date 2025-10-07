@@ -16,6 +16,12 @@ const JWT_SECRET = process.env.DANCE_DISTRICT_JWT_SECRET;
 const TOKEN_VALIDITY = process.env.DANCE_DISTRICT_TOKEN_VALIDITY;
 const TOKEN_MAX_VALIDITY = process.env.DANCE_DISTRICT_TOKEN_MAX_VALIDITY;
 
+// Dashboard deps
+const Enrollment = require("../../modals/Enrollments");
+const ClassSession = require("../../modals/ClassSessions");
+const WorkshopBooking = require("../../modals/WorkshopBooking");
+const MembershipBooking = require("../../modals/MembershipBooking");
+
 
 module.exports.registerUserWithoutToken = async (req, res) => {
   console.log('HEADERS:', req.headers);
@@ -177,6 +183,55 @@ module.exports.loginUsingEmail = async (req,res) => {
     });
   }
 };
+
+// Get dashboard data for a user
+module.exports.getUserDashboard = async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ message: "Invalid user ID" });
+    }
+
+    // Basic profile
+    const user = await User.findById(id)
+      .select("first_name last_name email_data phone_data role is_active is_archived createdAt")
+      .lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Enrollments (classes)
+    const enrollments = await Enrollment.find({ user_id: id })
+      .populate({
+        path: 'class_session_id',
+        model: ClassSession,
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Workshop bookings tied by email (created pre-user) or by matching name/phone
+    const workshopBookings = await WorkshopBooking.find({
+      $or: [
+        { email: user.email_data?.temp_email_id },
+      ]
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+    // Memberships for this user
+    const memberships = await MembershipBooking.find({ user: id })
+      .populate('plan')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      user,
+      enrollments,
+      workshopBookings,
+      memberships,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error", error });
+  }
+}
 
 module.exports.getUser = async (req, res) => {
   try {

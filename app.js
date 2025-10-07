@@ -58,6 +58,7 @@ const mediaTypeRoutes = require('./routes/mediaType');
 const mediaRoutes = require('./routes/media');
 const classTypeRoutes = require('./routes/ClassTypes');
 const workshopRoutes = require('./routes/Workshops');
+const classSessionRoutes = require('./routes/ClassSessions');
 const membershipPlanRoutes = require('./routes/MembershipPlans');
 // Routes
 app.use(`${API_ROOT}user`, userRoutes);
@@ -65,6 +66,7 @@ app.use(`${API_ROOT}media-type`, mediaTypeRoutes);
 app.use(`${API_ROOT}media`, mediaRoutes);
 app.use(`${API_ROOT}class-type`, classTypeRoutes);
 app.use(`${API_ROOT}workshop`, workshopRoutes);
+app.use(`${API_ROOT}class-session`, classSessionRoutes);
 app.use(`${API_ROOT}membership-plan`, membershipPlanRoutes);
 // Root route
 app.get('/', (req, res) => {
