@@ -43,7 +43,7 @@ exports.enrollInClassSession = async (req, res) => {
             user_id: effectiveUserId,
             class_session_id: classSessionId,
             status: 'PENDING',
-            price_paid: price_paid ?? session.price_drop_in ?? 0
+            price_paid: price_paid ?? 0
         });
 
         return res.status(201).json({ message: 'Enrollment created', enrollment });
@@ -69,7 +69,6 @@ exports.createClassSession = async (req, res) => {
             start_at,
             end_at,
             capacity,
-            price_drop_in,
             duration_minutes
         } = req.body;
 
@@ -102,7 +101,6 @@ exports.createClassSession = async (req, res) => {
             start_at: startDate,
             end_at: endDate,
             capacity: capacity ?? undefined,
-            price_drop_in: price_drop_in ?? undefined,
             duration_minutes: duration_minutes ?? undefined,
             is_cancelled: false
         });
