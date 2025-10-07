@@ -65,6 +65,7 @@ exports.createClassSession = async (req, res) => {
         const {
             class_type_id,
             instructor_user_id,
+            class_name,
             // space_id,
             start_at,
             end_at,
@@ -77,6 +78,9 @@ exports.createClassSession = async (req, res) => {
         }
         if (!instructor_user_id || !isValidObjectId(instructor_user_id)) {
             return res.status(400).json({ error: 'Valid instructor_user_id is required' });
+        }
+        if (!class_name) {
+            return res.status(400).json({ error: 'Valid class_name is required' });
         }
         // if (!space_id || !isValidObjectId(space_id)) {
         //     return res.status(400).json({ error: 'Valid space_id is required' });
@@ -97,6 +101,7 @@ exports.createClassSession = async (req, res) => {
         const newSession = await ClassSession.create({
             class_type_id,
             instructor_user_id,
+            class_name,
             // space_id,
             start_at: startDate,
             end_at: endDate,
