@@ -6,6 +6,9 @@ const classSessionController = require('../../controlers/ClassSessions');
 // Enroll in a class session (authenticated user preferred)
 router.post('/:classSessionId/enroll', isAuth, classSessionController.enrollInClassSession);
 
+// Admin create class session
+router.post('/', isAuth, classSessionController.createClassSession);
+
 module.exports = router;
 
 
