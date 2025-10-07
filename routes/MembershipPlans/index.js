@@ -6,6 +6,7 @@ router.post('/', plansController.createPlan);
 router.get('/', plansController.getPlans);
 router.post('/booking', plansController.createBooking);
 router.get('/check-status', plansController.checkMembershipStatus);
+router.get('/bookings', plansController.getMembershipBookings);
 router.get('/:id', plansController.getPlanById);
 router.put('/:id', plansController.updatePlan);
 router.delete('/:id', plansController.deletePlan);
