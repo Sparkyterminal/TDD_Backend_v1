@@ -64,7 +64,6 @@ exports.createClassSession = async (req, res) => {
 
         const {
             class_type_id,
-            instructor_user_id,
             class_name,
             // space_id,
             date,
@@ -73,12 +72,17 @@ exports.createClassSession = async (req, res) => {
             capacity,
             duration_minutes
         } = req.body;
+        const instructorIdsInput = Array.isArray(req.body.instructor_user_ids)
+            ? req.body.instructor_user_ids
+            : Array.isArray(req.body.instructor_user_id)
+                ? req.body.instructor_user_id
+                : [];
 
         if (!class_type_id || !isValidObjectId(class_type_id)) {
             return res.status(400).json({ error: 'Valid class_type_id is required' });
         }
-        if (!instructor_user_id || !isValidObjectId(instructor_user_id)) {
-            return res.status(400).json({ error: 'Valid instructor_user_id is required' });
+        if (!Array.isArray(instructorIdsInput) || instructorIdsInput.length === 0 || !instructorIdsInput.every(isValidObjectId)) {
+            return res.status(400).json({ error: 'Valid instructor_user_ids array is required' });
         }
         if (!class_name) {
             return res.status(400).json({ error: 'Valid class_name is required' });
@@ -96,16 +100,34 @@ exports.createClassSession = async (req, res) => {
             return res.status(400).json({ error: 'Valid end_at is required' });
         }
 
+        // Helpers: combine date with time-only values if needed
+        const isTimeOnly = (v) => typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v);
+        const toDate = (d, t) => {
+            if (isTimeOnly(t)) return new Date(`${d}T${t}`);
+            return new Date(t);
+        };
+
         const eventDate = new Date(date);
-        const startDate = new Date(start_at);
-        const endDate = new Date(end_at);
+        const startDate = toDate(date, start_at);
+        const endDate = toDate(date, end_at);
         if (endDate <= startDate) {
             return res.status(400).json({ error: 'end_at must be after start_at' });
         }
 
+        // Check overlapping time for any of the instructors
+        const overlappingInstructor = await ClassSession.findOne({
+            instructor_user_ids: { $in: instructorIdsInput },
+            is_cancelled: false,
+            start_at: { $lt: endDate },
+            end_at: { $gt: startDate }
+        }).lean();
+        if (overlappingInstructor) {
+            return res.status(409).json({ error: 'One or more instructors are unavailable for the selected time' });
+        }
+
         const newSession = await ClassSession.create({
             class_type_id,
-            instructor_user_id,
+            instructor_user_ids: instructorIdsInput,
             class_name,
             // space_id,
             date: eventDate,

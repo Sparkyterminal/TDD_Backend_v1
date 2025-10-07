@@ -9,10 +9,11 @@ const classSessionSchema = new Schema(
             ref: 'classtype',
             required: true
         },
-        instructor_user_id: {
-            type: ObjectId,
+        instructor_user_ids: {
+            type: [ObjectId],
             ref: 'user',
-            required: true
+            required: true,
+            validate: v => Array.isArray(v) && v.length > 0
         },
         class_name: {
             type: String,
