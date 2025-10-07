@@ -14,6 +14,10 @@ const classSessionSchema = new Schema(
             ref: 'user',
             required: true
         },
+        class_name: {
+            type: String,
+            required: true
+        },
         // space_id: {
         //     type: ObjectId,
         //     ref: 'studiospace',
