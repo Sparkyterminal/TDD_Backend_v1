@@ -18,6 +18,10 @@ const classSessionSchema = new Schema(
             type: String,
             required: true
         },
+        date: {
+            type: Date,
+            required: true
+        },
         // space_id: {
         //     type: ObjectId,
         //     ref: 'studiospace',

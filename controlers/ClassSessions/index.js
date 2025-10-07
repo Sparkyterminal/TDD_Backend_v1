@@ -67,6 +67,7 @@ exports.createClassSession = async (req, res) => {
             instructor_user_id,
             class_name,
             // space_id,
+            date,
             start_at,
             end_at,
             capacity,
@@ -85,6 +86,9 @@ exports.createClassSession = async (req, res) => {
         // if (!space_id || !isValidObjectId(space_id)) {
         //     return res.status(400).json({ error: 'Valid space_id is required' });
         // }
+        if (!date || isNaN(Date.parse(date))) {
+            return res.status(400).json({ error: 'Valid date is required' });
+        }
         if (!start_at || isNaN(Date.parse(start_at))) {
             return res.status(400).json({ error: 'Valid start_at is required' });
         }
@@ -92,6 +96,7 @@ exports.createClassSession = async (req, res) => {
             return res.status(400).json({ error: 'Valid end_at is required' });
         }
 
+        const eventDate = new Date(date);
         const startDate = new Date(start_at);
         const endDate = new Date(end_at);
         if (endDate <= startDate) {
@@ -103,6 +108,7 @@ exports.createClassSession = async (req, res) => {
             instructor_user_id,
             class_name,
             // space_id,
+            date: eventDate,
             start_at: startDate,
             end_at: endDate,
             capacity: capacity ?? undefined,
