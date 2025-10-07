@@ -144,7 +144,13 @@ exports.createClassSession = async (req, res) => {
             is_cancelled: false
         });
 
-        return res.status(201).json({ message: 'Class session created', session: newSession });
+        // Populate class type and instructors for client convenience
+        const populated = await ClassSession.findById(newSession._id)
+            .populate('class_type_id')
+            .populate('instructor_user_ids', '-password -__v')
+            .lean();
+
+        return res.status(201).json({ message: 'Class session created', session: populated });
     } catch (err) {
         console.error('Create class session error:', err);
         return res.status(500).json({ error: 'Server error' });
@@ -228,6 +234,8 @@ exports.getClassSessionsAdmin = async (req, res) => {
         const pipeline = [
             { $match: match },
             { $lookup: { from: 'users', localField: 'instructor_user_ids', foreignField: '_id', as: 'instructors' } },
+            { $lookup: { from: 'classtypes', localField: 'class_type_id', foreignField: '_id', as: 'class_type' } },
+            { $unwind: { path: '$class_type', preserveNullAndEmptyArrays: true } },
         ];
 
         // Optional instructor name search via ?instructorName=... (case-insensitive)
