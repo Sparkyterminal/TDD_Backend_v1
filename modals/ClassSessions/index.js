@@ -14,11 +14,11 @@ const classSessionSchema = new Schema(
             ref: 'user',
             required: true
         },
-        space_id: {
-            type: ObjectId,
-            ref: 'studiospace',
-            required: true
-        },
+        // space_id: {
+        //     type: ObjectId,
+        //     ref: 'studiospace',
+        //     required: false
+        // },
         start_at: {
             type: Date,
             required: true
