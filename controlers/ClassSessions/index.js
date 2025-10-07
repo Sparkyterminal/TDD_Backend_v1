@@ -152,3 +152,114 @@ exports.createClassSession = async (req, res) => {
 };
 
 
+// Admin: list/search class sessions
+exports.getClassSessionsAdmin = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            page = '1',
+            limit = '20',
+            sortBy = 'date',
+            sortOrder = 'asc',
+            q,                    // class_name search
+            instructorId,         // single id
+            instructorIds,        // comma-separated ids
+            date,                 // YYYY-MM-DD exact day
+            dateFrom,             // inclusive start (YYYY-MM-DD)
+            dateTo                // inclusive end (YYYY-MM-DD)
+        } = req.query;
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+        const sortDir = sortOrder === 'desc' ? -1 : 1;
+
+        const match = {};
+
+        // Name search
+        if (q && typeof q === 'string' && q.trim()) {
+            match.class_name = { $regex: q.trim(), $options: 'i' };
+        }
+
+        // Instructor filter (ids)
+        let instructorFilterIds = [];
+        if (instructorId && mongoose.Types.ObjectId.isValid(instructorId)) {
+            instructorFilterIds.push(new mongoose.Types.ObjectId(instructorId));
+        }
+        if (instructorIds && typeof instructorIds === 'string') {
+            instructorIds.split(',')
+                .map(s => s.trim())
+                .filter(s => mongoose.Types.ObjectId.isValid(s))
+                .forEach(s => instructorFilterIds.push(new mongoose.Types.ObjectId(s)));
+        }
+        if (instructorFilterIds.length > 0) {
+            match.instructor_user_ids = { $in: instructorFilterIds };
+        }
+
+        // Date filter (on `date` field)
+        const toDateOnly = (d) => new Date(`${d}T00:00:00.000Z`);
+        if (date && !isNaN(Date.parse(date))) {
+            const start = toDateOnly(date);
+            const end = new Date(start);
+            end.setUTCDate(end.getUTCDate() + 1);
+            match.date = { $gte: start, $lt: end };
+        } else {
+            const hasFrom = dateFrom && !isNaN(Date.parse(dateFrom));
+            const hasTo = dateTo && !isNaN(Date.parse(dateTo));
+            if (hasFrom || hasTo) {
+                match.date = {};
+                if (hasFrom) match.date.$gte = toDateOnly(dateFrom);
+                if (hasTo) {
+                    const end = toDateOnly(dateTo);
+                    end.setUTCDate(end.getUTCDate() + 1);
+                    match.date.$lt = end;
+                }
+            }
+        }
+
+        const allowedSortFields = new Set(['date', 'start_at', 'end_at', 'class_name', 'createdAt']);
+        const sortField = allowedSortFields.has(sortBy) ? sortBy : 'date';
+
+        // Aggregation to support instructor name search (optional via instructorName)
+        const pipeline = [
+            { $match: match },
+            { $lookup: { from: 'users', localField: 'instructor_user_ids', foreignField: '_id', as: 'instructors' } },
+        ];
+
+        // Optional instructor name search via ?instructorName=... (case-insensitive)
+        const { instructorName } = req.query;
+        if (instructorName && typeof instructorName === 'string' && instructorName.trim()) {
+            const regex = new RegExp(instructorName.trim(), 'i');
+            pipeline.push({ $match: { $or: [
+                { 'instructors.first_name': regex },
+                { 'instructors.last_name': regex },
+                { 'instructors.email_data.temp_email_id': regex }
+            ] } });
+        }
+
+        pipeline.push(
+            { $sort: { [sortField]: sortDir } },
+            { $facet: {
+                items: [
+                    { $skip: (pageNum - 1) * limitNum },
+                    { $limit: limitNum },
+                ],
+                totalCount: [ { $count: 'count' } ]
+            } }
+        );
+
+        const result = await ClassSession.aggregate(pipeline);
+        const items = result?.[0]?.items || [];
+        const total = result?.[0]?.totalCount?.[0]?.count || 0;
+
+        return res.status(200).json({ items, page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) });
+    } catch (err) {
+        console.error('Get class sessions (admin) error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+

@@ -9,6 +9,9 @@ router.post('/:classSessionId/enroll', isAuth, classSessionController.enrollInCl
 // Admin create class session
 router.post('/', isAuth, classSessionController.createClassSession);
 
+// Admin list/search class sessions
+router.get('/', isAuth, classSessionController.getClassSessionsAdmin);
+
 module.exports = router;
 
 
