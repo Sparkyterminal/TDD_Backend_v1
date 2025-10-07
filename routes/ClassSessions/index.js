@@ -12,6 +12,15 @@ router.post('/', isAuth, classSessionController.createClassSession);
 // Admin list/search class sessions
 router.get('/', isAuth, classSessionController.getClassSessionsAdmin);
 
+// Admin update class session
+router.put('/:id', isAuth, classSessionController.updateClassSession);
+
+// Admin cancel class session
+router.put('/:id/cancel', isAuth, classSessionController.cancelClassSession);
+
+// Admin get class session by id
+router.get('/:id', isAuth, classSessionController.getClassSessionById);
+
 module.exports = router;
 
 

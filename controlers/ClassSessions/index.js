@@ -271,3 +271,166 @@ exports.getClassSessionsAdmin = async (req, res) => {
     }
 };
 
+// Admin: update a class session
+exports.updateClassSession = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { id } = req.params;
+        if (!isValidObjectId(id)) {
+            return res.status(400).json({ error: 'Invalid session id' });
+        }
+
+        const updates = {};
+
+        if (req.body.class_type_id) {
+            if (!isValidObjectId(req.body.class_type_id)) {
+                return res.status(400).json({ error: 'Invalid class_type_id' });
+            }
+            updates.class_type_id = req.body.class_type_id;
+        }
+        if (req.body.class_name !== undefined) {
+            if (!req.body.class_name) return res.status(400).json({ error: 'Valid class_name is required' });
+            updates.class_name = req.body.class_name;
+        }
+        // Instructors
+        if (req.body.instructor_user_ids || req.body.instructor_user_id) {
+            const instructorIdsInput = Array.isArray(req.body.instructor_user_ids)
+                ? req.body.instructor_user_ids
+                : Array.isArray(req.body.instructor_user_id)
+                    ? req.body.instructor_user_id
+                    : [];
+            if (!Array.isArray(instructorIdsInput) || instructorIdsInput.length === 0 || !instructorIdsInput.every(isValidObjectId)) {
+                return res.status(400).json({ error: 'Valid instructor_user_ids array is required' });
+            }
+            updates.instructor_user_ids = instructorIdsInput;
+        }
+
+        // Date/time normalization
+        const isTimeOnly = (v) => typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v);
+        const toDate = (d, t) => {
+            if (t === undefined) return undefined;
+            if (isTimeOnly(t)) return new Date(`${d}T${t}`);
+            return new Date(t);
+        };
+
+        let eventDate = undefined;
+        if (req.body.date !== undefined) {
+            if (!req.body.date || isNaN(Date.parse(req.body.date))) {
+                return res.status(400).json({ error: 'Valid date is required' });
+            }
+            eventDate = new Date(req.body.date);
+            updates.date = eventDate;
+        }
+
+        // For start/end, if time-only provided and date not provided in this request, we need existing date
+        const existing = await ClassSession.findById(id).lean();
+        if (!existing) return res.status(404).json({ error: 'Session not found' });
+        const baseDateStr = (eventDate || existing.date).toISOString().slice(0, 10);
+
+        if (req.body.start_at !== undefined) {
+            const startDate = toDate(baseDateStr, req.body.start_at);
+            if (isNaN(startDate?.getTime())) return res.status(400).json({ error: 'Valid start_at is required' });
+            updates.start_at = startDate;
+        }
+        if (req.body.end_at !== undefined) {
+            const endDate = toDate(baseDateStr, req.body.end_at);
+            if (isNaN(endDate?.getTime())) return res.status(400).json({ error: 'Valid end_at is required' });
+            updates.end_at = endDate;
+        }
+
+        if (updates.start_at && updates.end_at && updates.end_at <= updates.start_at) {
+            return res.status(400).json({ error: 'end_at must be after start_at' });
+        }
+
+        if (req.body.capacity !== undefined) {
+            const cap = Number(req.body.capacity);
+            if (Number.isNaN(cap) || cap < 0) return res.status(400).json({ error: 'Invalid capacity' });
+            updates.capacity = cap;
+        }
+        if (req.body.duration_minutes !== undefined) {
+            const dur = Number(req.body.duration_minutes);
+            if (Number.isNaN(dur) || dur < 0) return res.status(400).json({ error: 'Invalid duration_minutes' });
+            updates.duration_minutes = dur;
+        }
+
+        // Conflict checks if any of time or instructors changed
+        const startForCheck = updates.start_at || existing.start_at;
+        const endForCheck = updates.end_at || existing.end_at;
+        const instructorsForCheck = updates.instructor_user_ids || existing.instructor_user_ids || [];
+        if (startForCheck && endForCheck && instructorsForCheck.length > 0) {
+            const overlapping = await ClassSession.findOne({
+                _id: { $ne: id },
+                instructor_user_ids: { $in: instructorsForCheck },
+                is_cancelled: false,
+                start_at: { $lt: endForCheck },
+                end_at: { $gt: startForCheck }
+            }).lean();
+            if (overlapping) {
+                return res.status(409).json({ error: 'One or more instructors are unavailable for the selected time' });
+            }
+        }
+
+        const updated = await ClassSession.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) return res.status(404).json({ error: 'Session not found' });
+
+        const populated = await ClassSession.findById(updated._id)
+            .populate('class_type_id')
+            .populate('instructor_user_ids', '-password -__v')
+            .lean();
+        return res.status(200).json({ message: 'Class session updated', session: populated });
+    } catch (err) {
+        console.error('Update class session error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Admin: cancel a class session
+exports.cancelClassSession = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { id } = req.params;
+        if (!isValidObjectId(id)) return res.status(400).json({ error: 'Invalid session id' });
+
+        const updated = await ClassSession.findByIdAndUpdate(id, { is_cancelled: true }, { new: true }).lean();
+        if (!updated) return res.status(404).json({ error: 'Session not found' });
+        return res.status(200).json({ message: 'Class session cancelled', session: updated });
+    } catch (err) {
+        console.error('Cancel class session error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Admin: get class session by id
+exports.getClassSessionById = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { id } = req.params;
+        if (!isValidObjectId(id)) return res.status(400).json({ error: 'Invalid session id' });
+
+        const session = await ClassSession.findById(id)
+            .populate('class_type_id')
+            .populate('instructor_user_ids', '-password -__v')
+            .lean();
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        return res.status(200).json({ session });
+    } catch (err) {
+        console.error('Get class session by id error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
