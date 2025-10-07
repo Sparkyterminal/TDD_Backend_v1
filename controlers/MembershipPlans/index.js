@@ -4,6 +4,7 @@ const MembershipBooking = require('../../modals/MembershipBooking');
 const User = require('../../modals/Users');
 const bcrypt = require('bcryptjs');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
+const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const env = Env.SANDBOX
@@ -332,5 +333,100 @@ exports.checkMembershipStatus = async (req, res) => {
     } catch (err) {
         console.error('Check membership status error:', err);
         return res.status(500).send('Internal server error during payment status check');
+    }
+};
+
+// Admin: list membership bookings with filters/pagination
+exports.getMembershipBookings = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            page = '1',
+            limit = '20',
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+            status, // paymentResult.status
+            planId,
+            userId,
+            email,
+            q
+        } = req.query;
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+        const sortDir = sortOrder === 'asc' ? 1 : -1;
+
+        const match = {};
+        if (status) {
+            match['paymentResult.status'] = status;
+        }
+        if (planId && mongoose.Types.ObjectId.isValid(planId)) {
+            match.plan = new mongoose.Types.ObjectId(planId);
+        }
+        if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+            match.user = new mongoose.Types.ObjectId(userId);
+        }
+        if (email && typeof email === 'string' && email.trim()) {
+            match.email = email.trim().toLowerCase();
+        }
+
+        const allowedSortFields = new Set(['createdAt', 'updatedAt', 'start_date', 'end_date']);
+        const sortField = allowedSortFields.has(sortBy) ? sortBy : 'createdAt';
+
+        const pipeline = [
+            { $match: match },
+            { $lookup: { from: 'membershipplans', localField: 'plan', foreignField: '_id', as: 'plan' } },
+            { $unwind: { path: '$plan', preserveNullAndEmptyArrays: true } },
+            { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'user' } },
+            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        ];
+
+        if (q && typeof q === 'string' && q.trim()) {
+            const regex = new RegExp(q.trim(), 'i');
+            pipeline.push({
+                $match: {
+                    $or: [
+                        { name: regex },
+                        { email: regex },
+                        { mobile_number: regex },
+                        { 'plan.name': regex },
+                    ]
+                }
+            });
+        }
+
+        pipeline.push(
+            { $sort: { [sortField]: sortDir } },
+            {
+                $facet: {
+                    items: [
+                        { $skip: (pageNum - 1) * limitNum },
+                        { $limit: limitNum },
+                        { $project: { password: 0, 'user.password': 0 } }
+                    ],
+                    totalCount: [ { $count: 'count' } ]
+                }
+            }
+        );
+
+        const result = await MembershipBooking.aggregate(pipeline);
+        const items = result?.[0]?.items || [];
+        const total = result?.[0]?.totalCount?.[0]?.count || 0;
+
+        return res.json({
+            items,
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    } catch (err) {
+        console.error('List membership bookings error:', err);
+        return res.status(500).json({ error: 'Server error' });
     }
 };
