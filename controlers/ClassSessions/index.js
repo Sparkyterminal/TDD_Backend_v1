@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Enrollment = require('../../modals/Enrollments');
 const ClassSession = require('../../modals/ClassSessions');
+const jwt = require('jsonwebtoken');
 
 function isValidObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id);
@@ -48,6 +49,67 @@ exports.enrollInClassSession = async (req, res) => {
         return res.status(201).json({ message: 'Enrollment created', enrollment });
     } catch (err) {
         console.error('Enroll in class session error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Admin: create a class session
+exports.createClassSession = async (req, res) => {
+    try {
+        const token = req.get('Authorization');
+        const decoded = token ? jwt.decode(token) : null;
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            class_type_id,
+            instructor_user_id,
+            space_id,
+            start_at,
+            end_at,
+            capacity,
+            price_drop_in,
+            duration_minutes
+        } = req.body;
+
+        if (!class_type_id || !isValidObjectId(class_type_id)) {
+            return res.status(400).json({ error: 'Valid class_type_id is required' });
+        }
+        if (!instructor_user_id || !isValidObjectId(instructor_user_id)) {
+            return res.status(400).json({ error: 'Valid instructor_user_id is required' });
+        }
+        if (!space_id || !isValidObjectId(space_id)) {
+            return res.status(400).json({ error: 'Valid space_id is required' });
+        }
+        if (!start_at || isNaN(Date.parse(start_at))) {
+            return res.status(400).json({ error: 'Valid start_at is required' });
+        }
+        if (!end_at || isNaN(Date.parse(end_at))) {
+            return res.status(400).json({ error: 'Valid end_at is required' });
+        }
+
+        const startDate = new Date(start_at);
+        const endDate = new Date(end_at);
+        if (endDate <= startDate) {
+            return res.status(400).json({ error: 'end_at must be after start_at' });
+        }
+
+        const newSession = await ClassSession.create({
+            class_type_id,
+            instructor_user_id,
+            space_id,
+            start_at: startDate,
+            end_at: endDate,
+            capacity: capacity ?? undefined,
+            price_drop_in: price_drop_in ?? undefined,
+            duration_minutes: duration_minutes ?? undefined,
+            is_cancelled: false
+        });
+
+        return res.status(201).json({ message: 'Class session created', session: newSession });
+    } catch (err) {
+        console.error('Create class session error:', err);
         return res.status(500).json({ error: 'Server error' });
     }
 };
