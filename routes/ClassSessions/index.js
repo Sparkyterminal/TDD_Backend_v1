@@ -10,7 +10,7 @@ router.post('/:classSessionId/enroll', isAuth, classSessionController.enrollInCl
 router.post('/', isAuth, classSessionController.createClassSession);
 
 // Admin list/search class sessions
-router.get('/', isAuth, classSessionController.getClassSessionsAdmin);
+router.get('/', classSessionController.getClassSessionsAdmin);
 
 // Admin update class session
 router.put('/:id', isAuth, classSessionController.updateClassSession);
