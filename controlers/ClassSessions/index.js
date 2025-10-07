@@ -90,16 +90,6 @@ exports.createClassSession = async (req, res) => {
         // if (!space_id || !isValidObjectId(space_id)) {
         //     return res.status(400).json({ error: 'Valid space_id is required' });
         // }
-        if (!date || isNaN(Date.parse(date))) {
-            return res.status(400).json({ error: 'Valid date is required' });
-        }
-        if (!start_at || isNaN(Date.parse(start_at))) {
-            return res.status(400).json({ error: 'Valid start_at is required' });
-        }
-        if (!end_at || isNaN(Date.parse(end_at))) {
-            return res.status(400).json({ error: 'Valid end_at is required' });
-        }
-
         // Helpers: combine date with time-only values if needed
         const isTimeOnly = (v) => typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v);
         const toDate = (d, t) => {
@@ -107,9 +97,25 @@ exports.createClassSession = async (req, res) => {
             return new Date(t);
         };
 
+        if (!date || isNaN(Date.parse(date))) {
+            return res.status(400).json({ error: 'Valid date is required' });
+        }
+        if (!start_at) {
+            return res.status(400).json({ error: 'Valid start_at is required' });
+        }
+        if (!end_at) {
+            return res.status(400).json({ error: 'Valid end_at is required' });
+        }
+
         const eventDate = new Date(date);
         const startDate = toDate(date, start_at);
         const endDate = toDate(date, end_at);
+        if (isNaN(startDate.getTime())) {
+            return res.status(400).json({ error: 'Valid start_at is required' });
+        }
+        if (isNaN(endDate.getTime())) {
+            return res.status(400).json({ error: 'Valid end_at is required' });
+        }
         if (endDate <= startDate) {
             return res.status(400).json({ error: 'end_at must be after start_at' });
         }
