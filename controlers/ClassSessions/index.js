@@ -688,3 +688,128 @@ exports.getUserConfirmedClassesCount = async (req, res) => {
     }
 };
 
+// User: weekly report of enrollments and sessions
+exports.getUserWeeklyReport = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({ error: 'Invalid user ID' });
+        }
+
+        const { weekStart } = req.query; // optional YYYY-MM-DD to anchor the week
+
+        // Determine week range (rolling 7 days if not provided)
+        let start = weekStart && !isNaN(Date.parse(weekStart))
+            ? new Date(`${weekStart}T00:00:00.000Z`)
+            : new Date();
+        if (!weekStart) {
+            // default: last 7 days ending today
+            const today = new Date();
+            start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+            start.setUTCDate(start.getUTCDate() - 6);
+        }
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 7); // exclusive end
+
+        // Aggregate enrollments joined with class sessions within the date window
+        const pipeline = [
+            { $match: { user_id: new mongoose.Types.ObjectId(userId) } },
+            { $lookup: {
+                from: 'classsessions',
+                localField: 'class_session_id',
+                foreignField: '_id',
+                as: 'class_session'
+            } },
+            { $unwind: { path: '$class_session', preserveNullAndEmptyArrays: false } },
+            { $match: { 'class_session.date': { $gte: start, $lt: end } } },
+            { $project: {
+                status: 1,
+                price_paid: 1,
+                day: { $dateToString: { format: '%Y-%m-%d', date: '$class_session.date' } }
+            } },
+            { $group: {
+                _id: '$day',
+                total: { $sum: 1 },
+                confirmed: { $sum: { $cond: [{ $eq: ['$status', 'CONFIRMED'] }, 1, 0] } },
+                cancelled: { $sum: { $cond: [{ $eq: ['$status', 'CANCELLED'] }, 1, 0] } },
+                attended: { $sum: { $cond: [{ $eq: ['$status', 'ATTENDED'] }, 1, 0] } },
+                no_show: { $sum: { $cond: [{ $eq: ['$status', 'NO_SHOW'] }, 1, 0] } }
+            } },
+            { $sort: { _id: 1 } }
+        ];
+
+        const daily = await Enrollment.aggregate(pipeline);
+
+        // Overall totals across the week
+        const totals = daily.reduce((acc, d) => {
+            acc.total += d.total;
+            acc.confirmed += d.confirmed;
+            acc.cancelled += d.cancelled;
+            acc.attended += d.attended;
+            acc.no_show += d.no_show;
+            return acc;
+        }, { total: 0, confirmed: 0, cancelled: 0, attended: 0, no_show: 0 });
+
+        return res.status(200).json({
+            range: { start, end },
+            daily,
+            totals
+        });
+    } catch (err) {
+        console.error('Get user weekly report error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// Admin/User: get booked list (enrollments) for a class session
+exports.getClassSessionBookings = async (req, res) => {
+    try {
+        const { id } = req.params; // class session id
+        if (!isValidObjectId(id)) {
+            return res.status(400).json({ error: 'Invalid class session id' });
+        }
+
+        const {
+            page = '1',
+            limit = '20',
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+            status // PENDING | CONFIRMED | CANCELLED | ATTENDED | NO_SHOW
+        } = req.query;
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+        const sortDir = sortOrder === 'asc' ? 1 : -1;
+
+        const match = { class_session_id: new mongoose.Types.ObjectId(id) };
+        if (status && ['PENDING','CONFIRMED','CANCELLED','ATTENDED','NO_SHOW'].includes(status)) {
+            match.status = status;
+        }
+
+        const allowedSortFields = new Set(['createdAt','updatedAt','price_paid']);
+        const sortField = allowedSortFields.has(sortBy) ? sortBy : 'createdAt';
+
+        const [items, total] = await Promise.all([
+            Enrollment.find(match)
+                .populate('user_id', 'first_name last_name email_data phone_data')
+                .populate('class_session_id')
+                .sort({ [sortField]: sortDir })
+                .skip((pageNum - 1) * limitNum)
+                .limit(limitNum)
+                .lean(),
+            Enrollment.countDocuments(match)
+        ]);
+
+        return res.status(200).json({
+            items,
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    } catch (err) {
+        console.error('Get class session bookings error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
