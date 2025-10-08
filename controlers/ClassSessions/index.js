@@ -226,6 +226,12 @@ exports.getClassSessionsAdmin = async (req, res) => {
             match.class_name = { $regex: q.trim(), $options: 'i' };
         }
 
+        // NEW: class_type filter
+        const classTypeId = req.query.class_type_id;
+        if (classTypeId && mongoose.Types.ObjectId.isValid(classTypeId)) {
+            match.class_type_id = new mongoose.Types.ObjectId(classTypeId);
+        }
+
         // Instructor filter (ids)
         let instructorFilterIds = [];
         if (instructorId && mongoose.Types.ObjectId.isValid(instructorId)) {
