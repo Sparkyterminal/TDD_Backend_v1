@@ -21,6 +21,9 @@ router.put('/:id/cancel', isAuth, classSessionController.cancelClassSession);
 // User get class sessions for a specific user
 router.get('/user/:userId', classSessionController.getUserClassSessions);
 
+// User get confirmed classes count
+router.get('/user/:userId/confirmed-count', classSessionController.getUserConfirmedClassesCount);
+
 // User cancel enrollment
 router.put('/enrollment/:enrollmentId/cancel', classSessionController.cancelEnrollment);
 

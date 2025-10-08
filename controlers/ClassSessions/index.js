@@ -640,3 +640,26 @@ exports.cancelEnrollment = async (req, res) => {
     }
 };
 
+// User: get count of confirmed classes for a user
+exports.getUserConfirmedClassesCount = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({ error: 'Invalid user ID' });
+        }
+
+        const count = await Enrollment.countDocuments({
+            user_id: new mongoose.Types.ObjectId(userId),
+            status: 'CONFIRMED'
+        });
+
+        return res.status(200).json({ 
+            userId,
+            confirmedClassesCount: count 
+        });
+    } catch (err) {
+        console.error('Get user confirmed classes count error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
