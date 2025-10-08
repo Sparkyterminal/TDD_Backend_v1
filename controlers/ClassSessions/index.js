@@ -45,16 +45,35 @@ exports.enrollInClassSession = async (req, res) => {
             }
         }
 
-        // Prevent duplicate enrollment for same user and session
+        // Check for existing enrollment (active or cancelled)
         const existing = await Enrollment.findOne({ user_id: effectiveUserId, class_session_id: classSessionId });
+        
         if (existing) {
-            // If user already enrolled, increment capacity back
-            if (typeof session.capacity === 'number') {
-                await ClassSession.findByIdAndUpdate(classSessionId, { $inc: { capacity: 1 } });
+            if (existing.status === 'CONFIRMED' || existing.status === 'PENDING') {
+                // If user already has active enrollment, increment capacity back and return error
+                if (typeof session.capacity === 'number') {
+                    await ClassSession.findByIdAndUpdate(classSessionId, { $inc: { capacity: 1 } });
+                }
+                return res.status(409).json({ error: 'User already enrolled for this class session' });
+            } else if (existing.status === 'CANCELLED') {
+                // If user had cancelled enrollment, reactivate it
+                const updatedEnrollment = await Enrollment.findByIdAndUpdate(
+                    existing._id,
+                    { 
+                        status: 'CONFIRMED',
+                        price_paid: price_paid ?? existing.price_paid ?? 0,
+                        updatedAt: new Date()
+                    },
+                    { new: true }
+                );
+                return res.status(200).json({ 
+                    message: 'Enrollment reactivated successfully', 
+                    enrollment: updatedEnrollment 
+                });
             }
-            return res.status(409).json({ error: 'User already enrolled for this class session' });
         }
 
+        // Create new enrollment if no existing enrollment found
         const enrollment = await Enrollment.create({
             user_id: effectiveUserId,
             class_session_id: classSessionId,
