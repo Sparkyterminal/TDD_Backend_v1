@@ -617,6 +617,19 @@ exports.cancelEnrollment = async (req, res) => {
             );
         }
 
+        // Check if all enrollments are cancelled and mark session as cancelled
+        const activeEnrollments = await Enrollment.countDocuments({
+            class_session_id: enrollment.class_session_id,
+            status: { $ne: 'CANCELLED' }
+        });
+
+        if (activeEnrollments === 0) {
+            await ClassSession.findByIdAndUpdate(
+                enrollment.class_session_id,
+                { is_cancelled: true }
+            );
+        }
+
         return res.status(200).json({ 
             message: 'Enrollment cancelled successfully', 
             enrollment: updatedEnrollment 
