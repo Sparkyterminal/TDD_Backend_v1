@@ -22,7 +22,7 @@ const enrollmentSchema = new Schema(
         status: {
             type: String,
             enum: ['PENDING', 'CONFIRMED', 'CANCELLED', 'ATTENDED', 'NO_SHOW'],
-            default: 'PENDING'
+            default: 'CONFIRMED'
         },
         price_paid: {
             type: Number,
