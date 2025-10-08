@@ -42,7 +42,7 @@ exports.enrollInClassSession = async (req, res) => {
         const enrollment = await Enrollment.create({
             user_id: effectiveUserId,
             class_session_id: classSessionId,
-            status: 'PENDING',
+            status: 'CONFIRMED',
             price_paid: price_paid ?? 0
         });
 
