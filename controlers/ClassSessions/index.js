@@ -28,14 +28,30 @@ exports.enrollInClassSession = async (req, res) => {
             return res.status(404).json({ error: 'Class session not found or cancelled' });
         }
 
-        // Optional: check capacity if defined
-        if (typeof session.capacity === 'number' && session.capacity <= 0) {
-            return res.status(400).json({ error: 'No seats available for this session' });
+        // Check capacity and decrement atomically
+        if (typeof session.capacity === 'number') {
+            const updatedSession = await ClassSession.findOneAndUpdate(
+                { 
+                    _id: classSessionId, 
+                    capacity: { $gt: 0 },
+                    is_cancelled: false 
+                },
+                { $inc: { capacity: -1 } },
+                { new: true }
+            );
+            
+            if (!updatedSession) {
+                return res.status(400).json({ error: 'No seats available for this session or session is cancelled' });
+            }
         }
 
         // Prevent duplicate enrollment for same user and session
         const existing = await Enrollment.findOne({ user_id: effectiveUserId, class_session_id: classSessionId });
         if (existing) {
+            // If user already enrolled, increment capacity back
+            if (typeof session.capacity === 'number') {
+                await ClassSession.findByIdAndUpdate(classSessionId, { $inc: { capacity: 1 } });
+            }
             return res.status(409).json({ error: 'User already enrolled for this class session' });
         }
 
@@ -430,6 +446,183 @@ exports.getClassSessionById = async (req, res) => {
         return res.status(200).json({ session });
     } catch (err) {
         console.error('Get class session by id error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// User: get class sessions for a specific user
+exports.getUserClassSessions = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({ error: 'Invalid user ID' });
+        }
+
+        const {
+            page = '1',
+            limit = '20',
+            sortBy = 'start_at',
+            sortOrder = 'asc',
+            status, // enrollment status filter
+            dateFrom,
+            dateTo
+        } = req.query;
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+        const sortDir = sortOrder === 'desc' ? -1 : 1;
+
+        // Build enrollment match
+        const enrollmentMatch = { user_id: new mongoose.Types.ObjectId(userId) };
+        if (status && ['PENDING', 'CONFIRMED', 'CANCELLED', 'ATTENDED', 'NO_SHOW'].includes(status)) {
+            enrollmentMatch.status = status;
+        }
+
+        // Date filter on class session date
+        const sessionDateMatch = {};
+        if (dateFrom && !isNaN(Date.parse(dateFrom))) {
+            const start = new Date(`${dateFrom}T00:00:00.000Z`);
+            sessionDateMatch.date = { $gte: start };
+        }
+        if (dateTo && !isNaN(Date.parse(dateTo))) {
+            const end = new Date(`${dateTo}T23:59:59.999Z`);
+            sessionDateMatch.date = { $lte: end };
+        }
+
+        const allowedSortFields = new Set(['start_at', 'end_at', 'date', 'class_name', 'createdAt']);
+        const sortField = allowedSortFields.has(sortBy) ? sortBy : 'start_at';
+
+        const pipeline = [
+            // Start with enrollments for this user
+            { $match: enrollmentMatch },
+            // Join with class sessions
+            { $lookup: {
+                from: 'classsessions',
+                localField: 'class_session_id',
+                foreignField: '_id',
+                as: 'class_session'
+            }},
+            { $unwind: { path: '$class_session', preserveNullAndEmptyArrays: false } },
+            // Apply date filters on class session
+            ...(Object.keys(sessionDateMatch).length > 0 ? [{ $match: sessionDateMatch }] : []),
+            // Join with class type and instructors
+            { $lookup: {
+                from: 'classtypes',
+                localField: 'class_session.class_type_id',
+                foreignField: '_id',
+                as: 'class_type'
+            }},
+            { $unwind: { path: '$class_type', preserveNullAndEmptyArrays: true } },
+            { $lookup: {
+                from: 'users',
+                localField: 'class_session.instructor_user_ids',
+                foreignField: '_id',
+                as: 'instructors'
+            }},
+            // Sort and paginate
+            { $sort: { [`class_session.${sortField}`]: sortDir } },
+            { $facet: {
+                items: [
+                    { $skip: (pageNum - 1) * limitNum },
+                    { $limit: limitNum },
+                    { $project: {
+                        enrollment_id: '$_id',
+                        status: '$status',
+                        price_paid: '$price_paid',
+                        attendance: '$attendance',
+                        enrollment_created: '$createdAt',
+                        class_session: {
+                            id: '$class_session._id',
+                            class_name: '$class_session.class_name',
+                            date: '$class_session.date',
+                            start_at: '$class_session.start_at',
+                            end_at: '$class_session.end_at',
+                            capacity: '$class_session.capacity',
+                            duration_minutes: '$class_session.duration_minutes',
+                            is_cancelled: '$class_session.is_cancelled',
+                            class_type: '$class_type',
+                            instructors: '$instructors'
+                        }
+                    }}
+                ],
+                totalCount: [{ $count: 'count' }]
+            }}
+        ];
+
+        const result = await Enrollment.aggregate(pipeline);
+        const items = result?.[0]?.items || [];
+        const total = result?.[0]?.totalCount?.[0]?.count || 0;
+
+        return res.status(200).json({
+            items,
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    } catch (err) {
+        console.error('Get user class sessions error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+// User: cancel enrollment in a class session
+exports.cancelEnrollment = async (req, res) => {
+    try {
+        const { enrollmentId } = req.params;
+        const { user_id } = req.body;
+
+        if (!isValidObjectId(enrollmentId)) {
+            return res.status(400).json({ error: 'Invalid enrollment ID' });
+        }
+
+        // Prefer authenticated user if available; fallback to body user_id
+        const effectiveUserId = req.userId || user_id;
+        if (!effectiveUserId || !isValidObjectId(effectiveUserId)) {
+            return res.status(400).json({ error: 'Valid user_id is required' });
+        }
+
+        // Find enrollment and verify ownership
+        const enrollment = await Enrollment.findById(enrollmentId).lean();
+        if (!enrollment) {
+            return res.status(404).json({ error: 'Enrollment not found' });
+        }
+
+        if (enrollment.user_id.toString() !== effectiveUserId.toString()) {
+            return res.status(403).json({ error: 'Unauthorized to cancel this enrollment' });
+        }
+
+        if (enrollment.status === 'CANCELLED') {
+            return res.status(400).json({ error: 'Enrollment already cancelled' });
+        }
+
+        // Get class session to check capacity
+        const session = await ClassSession.findById(enrollment.class_session_id).lean();
+        if (!session) {
+            return res.status(404).json({ error: 'Class session not found' });
+        }
+
+        // Update enrollment status
+        const updatedEnrollment = await Enrollment.findByIdAndUpdate(
+            enrollmentId,
+            { status: 'CANCELLED' },
+            { new: true }
+        );
+
+        // Increment capacity back if session has capacity tracking
+        if (typeof session.capacity === 'number') {
+            await ClassSession.findByIdAndUpdate(
+                enrollment.class_session_id,
+                { $inc: { capacity: 1 } }
+            );
+        }
+
+        return res.status(200).json({ 
+            message: 'Enrollment cancelled successfully', 
+            enrollment: updatedEnrollment 
+        });
+    } catch (err) {
+        console.error('Cancel enrollment error:', err);
         return res.status(500).json({ error: 'Server error' });
     }
 };

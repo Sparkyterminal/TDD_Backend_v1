@@ -18,6 +18,12 @@ router.put('/:id', isAuth, classSessionController.updateClassSession);
 // Admin cancel class session
 router.put('/:id/cancel', isAuth, classSessionController.cancelClassSession);
 
+// User get class sessions for a specific user
+router.get('/user/:userId', classSessionController.getUserClassSessions);
+
+// User cancel enrollment
+router.put('/enrollment/:enrollmentId/cancel', classSessionController.cancelEnrollment);
+
 // Admin get class session by id
 router.get('/:id', isAuth, classSessionController.getClassSessionById);
 
