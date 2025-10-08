@@ -336,6 +336,59 @@ exports.checkMembershipStatus = async (req, res) => {
     }
 };
 
+// Get membership plan details for a specific user
+exports.getUserMemberships = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({ error: 'Invalid user ID' });
+        }
+
+        const {
+            page = '1',
+            limit = '20',
+            sortBy = 'start_date',
+            sortOrder = 'desc',
+            active // 'true' | 'false' optional
+        } = req.query;
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+        const sortDir = sortOrder === 'asc' ? 1 : -1;
+
+        const filter = { user: userId };
+        if (active === 'true') {
+            filter.end_date = { $gt: new Date() };
+        } else if (active === 'false') {
+            filter.end_date = { $lte: new Date() };
+        }
+
+        const allowedSortFields = new Set(['start_date', 'end_date', 'createdAt']);
+        const sortField = allowedSortFields.has(sortBy) ? sortBy : 'start_date';
+
+        const [items, total] = await Promise.all([
+            MembershipBooking.find(filter)
+                .populate('plan')
+                .sort({ [sortField]: sortDir })
+                .skip((pageNum - 1) * limitNum)
+                .limit(limitNum)
+                .lean(),
+            MembershipBooking.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            items,
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    } catch (err) {
+        console.error('Get user memberships error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+}
+
 // Admin: list membership bookings with filters/pagination
 exports.getMembershipBookings = async (req, res) => {
     try {
