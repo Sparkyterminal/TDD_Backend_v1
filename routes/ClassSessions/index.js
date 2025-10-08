@@ -27,8 +27,14 @@ router.get('/user/:userId/confirmed-count', classSessionController.getUserConfir
 // User cancel enrollment
 router.put('/enrollment/:enrollmentId/cancel', classSessionController.cancelEnrollment);
 
+// User weekly report
+router.get('/user/:userId/weekly-report', classSessionController.getUserWeeklyReport);
+
 // Admin get class session by id
 router.get('/:id', isAuth, classSessionController.getClassSessionById);
+
+// Get booked list (enrollments) for a class session
+router.get('/:id/bookings', classSessionController.getClassSessionBookings);
 
 module.exports = router;
 
