@@ -18,8 +18,8 @@ exports.createWorkshop = async (req, res) => {
         description,
         instructor_user_ids,
         instructor,
-        media,
-        image,
+        // media,
+        // image,             
         date,
         start_time,
         end_time,
@@ -31,9 +31,9 @@ exports.createWorkshop = async (req, res) => {
       } = req.body;
   
       // Use image as media array if media not provided
-      if (!media && image) {
-        media = [image];
-      }
+      // if (!media && image) {
+      //   media = [image];
+      // }
   
       // Use instructor string as single-element array if instructor_user_ids not provided
       if (!instructor_user_ids && instructor) {
@@ -57,9 +57,12 @@ exports.createWorkshop = async (req, res) => {
       if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
         return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
       }
-      if (media && !Array.isArray(media)) {
-        return res.status(400).json({ error: 'media must be an array of IDs' });
-      }
+      // if (image && !Array.isArray(image)) {
+      //   return res.status(400).json({ error: 'image must be an array of IDs' });
+      // }
+      // if (media && !Array.isArray(media)) {
+      //   return res.status(400).json({ error: 'media must be an array of IDs' });
+      // }
   
       // Convert capacity and price to numbers if they are string
       if (capacity && typeof capacity === 'string') {
@@ -75,7 +78,7 @@ exports.createWorkshop = async (req, res) => {
         title,
         description,
         instructor_user_ids,
-        media,
+        // media,
         date: new Date(date),
         start_time: new Date(start_time),
         end_time: new Date(end_time),
