@@ -183,7 +183,11 @@ exports.getWorkshops = async (req, res) => {
     try {
         // Optionally add filters, pagination here
         const workshops = await Workshop.find()
-            .populate('instructor_user_ids', '-password -__v')
+            .populate({
+                path: 'instructor_user_ids',
+                select: 'first_name last_name email_data phone_data role is_active is_archived media',
+                populate: { path: 'media' }
+            })
             // .populate('media')
             .sort({ start_at: 1 });
         return res.json(workshops);
