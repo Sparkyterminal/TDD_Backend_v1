@@ -297,6 +297,7 @@ exports.bookWorkshop = async (req, res) => {
       _id: workshopId,
       is_cancelled: false,
       is_active: true,
+      'batches._id': batchId
     });
 
     if (!workshop) {
@@ -304,7 +305,7 @@ exports.bookWorkshop = async (req, res) => {
     }
 
     // Find and validate the single batch
-    const batch = workshop.batches.find(b => b._id.toString() === batchId);
+    const batch = workshop?.batches?.id(batchId);
     if (!batch || batch.is_cancelled) {
       return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
     }
