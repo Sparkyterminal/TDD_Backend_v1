@@ -21,7 +21,7 @@ const workshopSchema = new Schema(
             {
             type: ObjectId,
             ref: "media",
-            required: true,
+            required: false,
             }
           ],   
         // space_id: {
