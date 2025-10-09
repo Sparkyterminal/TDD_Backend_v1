@@ -320,12 +320,7 @@ exports.bookWorkshop = async (req, res) => {
       }
       validBatches.push(b);
     }
-    if (!batch || batch.is_cancelled) {
-      return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
-    }
-    if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
-      return res.status(400).json({ error: 'No more slots available for this batch.' });
-    }
+    // At this point all batches in validBatches are available
 
     // Determine pricing tier based on early_bird capacity_limit vs existing bookings
     // Determine pricing per batch and sum total
