@@ -297,7 +297,7 @@ exports.bookWorkshop = async (req, res) => {
       _id: workshopId,
       is_cancelled: false,
       is_active: true,
-      'batches._id': batchId
+      'batches._id': { $in: batchIds }
     });
 
     if (!workshop) {
