@@ -354,8 +354,8 @@ exports.bookWorkshop = async (req, res) => {
       });
       await booking.save();
 
-      const merchantOrderId = booking._id.toString();
-      const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+      const merchantOrderId = workshopId.toString();
+      const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}&bookingId=${booking._id.toString()}`;
       const priceInPaise = Math.round((price || 0) * 100);
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
@@ -369,17 +369,9 @@ exports.bookWorkshop = async (req, res) => {
 
     // Create booking with status INITIATED (pending payment)
     const successful = results.filter(r => !r.error);
-    const errors = results.filter(r => r.error).map(({ batchId, error }) => ({ batchId, error }));
-
-    const bookings = successful.map(({ batchId, booking }) => ({ batchId, booking }));
     const checkoutPageUrls = successful.map(({ batchId, checkoutPageUrl }) => ({ batchId, checkoutPageUrl }));
 
-    return res.status(201).json({
-      message: 'Workshop booking(s) initiated. Please complete payment for each batch.',
-      bookings,
-      checkoutPageUrls,
-      errors
-    });
+    return res.status(201).json({ checkoutPageUrls });
 
   } catch (error) {
     console.error('Error in booking workshop:', error);
