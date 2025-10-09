@@ -4,6 +4,7 @@ const ObjectId = Schema.Types.ObjectId;
 
 const bookingSchema = new Schema({
   workshop: { type: ObjectId, ref: 'workshop', required: true },
+  batch_id: { type: ObjectId, required: true },
   // User form details:
   name: {
     type: String,
@@ -29,6 +30,13 @@ const bookingSchema = new Schema({
   },
   paymentResult: {
     status: String,
+  },
+  pricing_tier: {
+    type: String,
+    enum: ['EARLY_BIRD', 'REGULAR', 'ON_THE_SPOT'],
+  },
+  price_charged: {
+    type: Number,
   },
   bookedAt: {
     type: Date,

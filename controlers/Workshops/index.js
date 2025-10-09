@@ -273,14 +273,17 @@ exports.cancelWorkshop = async (req, res) => {
   
 exports.bookWorkshop = async (req, res) => {
   try {
-    const { workshopId, name, age, email, mobile_number, gender } = req.body;
+    const { workshopId, batchId, name, age, email, mobile_number, gender } = req.body;
 
     // Validate required fields
-    if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+    if (!workshopId || !batchId || !name || !age || !email || !mobile_number || !gender) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     if (!isValidObjectId(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
+    }
+    if (!isValidObjectId(batchId)) {
+      return res.status(400).json({ error: 'Invalid batchId' });
     }
     if (typeof age !== 'number' || age < 0) {
       return res.status(400).json({ error: 'Invalid age' });
@@ -300,20 +303,47 @@ exports.bookWorkshop = async (req, res) => {
       return res.status(404).json({ error: 'Workshop not found or unavailable.' });
     }
 
-    // Check for capacity (do not decrement here)
-    if (workshop.capacity && workshop.capacity <= 0) {
-      return res.status(400).json({ error: 'No more slots available for booking.' });
+    // Find the batch
+    const batch = workshop.batches.find(b => b._id.toString() === batchId);
+    if (!batch || batch.is_cancelled) {
+      return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
+    }
+    // Capacity check at batch-level (do not decrement here)
+    if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
+      return res.status(400).json({ error: 'No more slots available for this batch.' });
+    }
+
+    // Determine pricing tier based on early_bird capacity_limit vs existing bookings
+    const earlyLimit = batch.pricing?.early_bird?.capacity_limit ?? 0;
+    const earlyCount = await Booking.countDocuments({ workshop: workshopId, batch_id: batchId, pricing_tier: 'EARLY_BIRD' });
+    let pricing_tier = 'REGULAR';
+    if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
+      pricing_tier = 'EARLY_BIRD';
+    }
+    let price = null;
+    if (pricing_tier === 'EARLY_BIRD') {
+      price = batch.pricing.early_bird.price;
+    } else if (batch.pricing?.regular?.price != null) {
+      price = batch.pricing.regular.price;
+    } else if (batch.pricing?.on_the_spot?.price != null) {
+      pricing_tier = 'ON_THE_SPOT';
+      price = batch.pricing.on_the_spot.price;
+    } else {
+      price = 0;
     }
 
     // Create booking with status INITIATED (pending payment)
     const booking = new Booking({
       workshop: workshopId,
+      batch_id: batchId,
       name,
       age,
       email,
       mobile_number,
       gender,
       status: 'INITIATED',
+      pricing_tier,
+      price_charged: price,
       paymentResult: {
         status: 'initiated'
       }
@@ -329,7 +359,7 @@ exports.bookWorkshop = async (req, res) => {
     // In production, use your deployed backend URL instead
 
     // Price in paise (assumes price is in INR)
-    const priceInPaise = Math.round((workshop.price || 0) * 100);
+    const priceInPaise = Math.round((price || 0) * 100);
 
     // Build payment request
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
