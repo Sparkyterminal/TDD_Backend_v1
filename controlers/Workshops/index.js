@@ -21,13 +21,12 @@ exports.createWorkshop = async (req, res) => {
         // media,
         // image,             
         date,
-        start_time,
-        end_time,
         capacity,
         price,
         tags,
         is_cancelled,
-        is_active
+        is_active,
+        batches
       } = req.body;
   
       // Use image as media array if media not provided
@@ -41,8 +40,27 @@ exports.createWorkshop = async (req, res) => {
       }
   
       // Validate required fields
-      if (!title || !date || !start_time || !end_time) {
-        return res.status(400).json({ error: 'Missing required fields: title, date, start_time, end_time' });
+      if (!title || !date) {
+        return res.status(400).json({ error: 'Missing required fields: title, date' });
+      }
+
+      // Validate batches
+      if (!batches || !Array.isArray(batches) || batches.length === 0) {
+        return res.status(400).json({ error: 'batches array is required with at least one batch' });
+      }
+
+      // Validate each batch
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        if (!batch.start_time || !batch.end_time) {
+          return res.status(400).json({ error: `Batch ${i + 1} missing start_time or end_time` });
+        }
+        if (isNaN(Date.parse(batch.start_time)) || isNaN(Date.parse(batch.end_time))) {
+          return res.status(400).json({ error: `Batch ${i + 1} has invalid time format` });
+        }
+        if (new Date(batch.end_time) <= new Date(batch.start_time)) {
+          return res.status(400).json({ error: `Batch ${i + 1} end_time must be after start_time` });
+        }
       }
   
       // Validate date and times
@@ -74,20 +92,30 @@ exports.createWorkshop = async (req, res) => {
         if (isNaN(price)) price = undefined;
       }
   
-      const workshop = new Workshop({
+      // Prepare workshop data
+      const workshopData = {
         title,
         description,
         instructor_user_ids,
         // media,
         date: new Date(date),
-        start_time: new Date(start_time),
-        end_time: new Date(end_time),
         capacity,
         price,
         tags,
         is_cancelled: is_cancelled ?? false,
         is_active: is_active ?? true
-      });
+      };
+
+      // Process batches
+      workshopData.batches = batches.map(batch => ({
+        start_time: new Date(batch.start_time),
+        end_time: new Date(batch.end_time),
+        capacity: batch.capacity,
+        price: batch.price,
+        is_cancelled: batch.is_cancelled ?? false
+      }));
+
+      const workshop = new Workshop(workshopData);
   
       await workshop.save();
       return res.status(201).json(workshop);
@@ -108,7 +136,7 @@ exports.getWorkshop = async (req, res) => {
 
         const workshop = await Workshop.findById(id)
             .populate('instructor_user_ids', '-password -__v')
-            .populate('media');
+            // .populate('media');
 
         if (!workshop) {
             return res.status(404).json({ error: 'Workshop not found' });
@@ -126,7 +154,7 @@ exports.getWorkshops = async (req, res) => {
         // Optionally add filters, pagination here
         const workshops = await Workshop.find()
             .populate('instructor_user_ids', '-password -__v')
-            .populate('media')
+            // .populate('media')
             .sort({ start_at: 1 });
         return res.json(workshops);
     } catch (err) {

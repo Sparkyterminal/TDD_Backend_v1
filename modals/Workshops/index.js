@@ -36,18 +36,28 @@ const workshopSchema = new Schema(
             type: Date,
             required: true
         },
-        start_time: {
-            type: Date,
-            required: true
-          },
-          end_time: {
-            type: Date,
-            required: true
-          },          
-        // end_at: {
-        //     type: Date,
-        //     required: true
-        // },
+        batches: [{
+            start_time: {
+                type: Date,
+                required: true
+            },
+            end_time: {
+                type: Date,
+                required: true
+            },
+            capacity: {
+                type: Number,
+                required: false
+            },
+            price: {
+                type: Number,
+                required: false
+            },
+            is_cancelled: {
+                type: Boolean,
+                default: false
+            }
+        }],
         capacity: {
             type: Number,
             required: false
