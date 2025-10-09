@@ -273,7 +273,7 @@ exports.cancelWorkshop = async (req, res) => {
   
 exports.bookWorkshop = async (req, res) => {
   try {
-    const { workshopId, batchId, batchIds, name, age, email, mobile_number, gender } = req.body;
+    const { workshopId, batchId, name, age, email, mobile_number, gender } = req.body;
 
     // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
@@ -282,12 +282,8 @@ exports.bookWorkshop = async (req, res) => {
     if (!isValidObjectId(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
     }
-    const batchIdList = Array.isArray(batchIds) ? batchIds : (batchId ? [batchId] : []);
-    if (batchIdList.length === 0) {
-      return res.status(400).json({ error: 'Provide batchId or batchIds[]' });
-    }
-    if (!batchIdList.every(isValidObjectId)) {
-      return res.status(400).json({ error: 'Invalid batchId in list' });
+    if (!batchId) {
+      return res.status(400).json({ error: 'batchId is required' });
     }
     if (typeof age !== 'number' || age < 0) {
       return res.status(400).json({ error: 'Invalid age' });
@@ -307,71 +303,61 @@ exports.bookWorkshop = async (req, res) => {
       return res.status(404).json({ error: 'Workshop not found or unavailable.' });
     }
 
-    // Prepare results per batch
-    const results = [];
-    for (const bId of batchIdList) {
-      const batch = workshop.batches.find(b => b._id.toString() === bId);
-      if (!batch || batch.is_cancelled) {
-        results.push({ batchId: bId, error: 'Selected batch not found or cancelled.' });
-        continue;
-      }
-      if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
-        results.push({ batchId: bId, error: 'No more slots available for this batch.' });
-        continue;
-      }
-
-      // Determine pricing tier based on early_bird capacity_limit vs existing bookings
-      const earlyLimit = batch.pricing?.early_bird?.capacity_limit ?? 0;
-      const earlyCount = await Booking.countDocuments({ workshop: workshopId, batch_id: bId, pricing_tier: 'EARLY_BIRD' });
-      let pricing_tier = 'REGULAR';
-      if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
-        pricing_tier = 'EARLY_BIRD';
-      }
-      let price = null;
-      if (pricing_tier === 'EARLY_BIRD') {
-        price = batch.pricing.early_bird.price;
-      } else if (batch.pricing?.regular?.price != null) {
-        price = batch.pricing.regular.price;
-      } else if (batch.pricing?.on_the_spot?.price != null) {
-        pricing_tier = 'ON_THE_SPOT';
-        price = batch.pricing.on_the_spot.price;
-      } else {
-        price = 0;
-      }
-
-      const booking = new Booking({
-        workshop: workshopId,
-        batch_id: bId,
-        name,
-        age,
-        email,
-        mobile_number,
-        gender,
-        status: 'INITIATED',
-        pricing_tier,
-        price_charged: price,
-        paymentResult: { status: 'initiated' }
-      });
-      await booking.save();
-
-      const merchantOrderId = workshopId.toString();
-      const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}&bookingId=${booking._id.toString()}`;
-      const priceInPaise = Math.round((price || 0) * 100);
-      const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
-        .merchantOrderId(merchantOrderId)
-        .amount(priceInPaise)
-        .redirectUrl(redirectUrl)
-        .build();
-      const paymentResponse = await client.pay(paymentRequest);
-
-      results.push({ batchId: bId, booking, checkoutPageUrl: paymentResponse.redirectUrl });
+    // Find and validate the single batch
+    const batch = workshop.batches.find(b => b._id.toString() === batchId);
+    if (!batch || batch.is_cancelled) {
+      return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
+    }
+    if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
+      return res.status(400).json({ error: 'No more slots available for this batch.' });
     }
 
-    // Create booking with status INITIATED (pending payment)
-    const successful = results.filter(r => !r.error);
-    const checkoutPageUrls = successful.map(({ batchId, checkoutPageUrl }) => ({ batchId, checkoutPageUrl }));
+    // Determine pricing tier based on early_bird capacity_limit vs existing bookings
+    const earlyLimit = batch.pricing?.early_bird?.capacity_limit ?? 0;
+    const earlyCount = await Booking.countDocuments({ workshop: workshopId, batch_id: batchId, pricing_tier: 'EARLY_BIRD' });
+    let pricing_tier = 'REGULAR';
+    if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
+      pricing_tier = 'EARLY_BIRD';
+    }
+    let price = null;
+    if (pricing_tier === 'EARLY_BIRD') {
+      price = batch.pricing.early_bird.price;
+    } else if (batch.pricing?.regular?.price != null) {
+      price = batch.pricing.regular.price;
+    } else if (batch.pricing?.on_the_spot?.price != null) {
+      pricing_tier = 'ON_THE_SPOT';
+      price = batch.pricing.on_the_spot.price;
+    } else {
+      price = 0;
+    }
 
-    return res.status(201).json({ checkoutPageUrls });
+    const booking = new Booking({
+      workshop: workshopId,
+      batch_id: batchId,
+      name,
+      age,
+      email,
+      mobile_number,
+      gender,
+      status: 'INITIATED',
+      pricing_tier,
+      price_charged: price,
+      paymentResult: { status: 'initiated' }
+    });
+    await booking.save();
+
+    const merchantOrderId = booking._id.toString();
+    const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+    const priceInPaise = Math.round((price || 0) * 100);
+    const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+      .merchantOrderId(merchantOrderId)
+      .amount(priceInPaise)
+      .redirectUrl(redirectUrl)
+      .build();
+    const paymentResponse = await client.pay(paymentRequest);
+
+    // Create booking with status INITIATED (pending payment)
+    return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl });
 
   } catch (error) {
     console.error('Error in booking workshop:', error);
