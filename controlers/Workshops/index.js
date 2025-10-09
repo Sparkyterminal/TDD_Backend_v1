@@ -409,20 +409,17 @@ exports.getStatusOfPayment = async (req, res) => {
       } else {
         const batchIds = booking.batch_ids && booking.batch_ids.length ? booking.batch_ids : [booking.batch_id].filter(Boolean);
         for (const bId of batchIds) {
-          const batch = workshopDoc.batches?.find(b => b._id.toString() === bId.toString());
+          const bIdObj = new mongoose.Types.ObjectId(bId);
+          const batch = workshopDoc.batches?.find(b => b._id.toString() === bIdObj.toString());
           if (!batch || batch.is_cancelled) {
             capacityOk = false;
             break;
           }
           if (typeof batch.capacity === 'number') {
             const updated = await Workshop.findOneAndUpdate(
-              {
-                _id: booking.workshop,
-                'batches._id': bId,
-                'batches.capacity': { $gt: 0 }
-              },
-              { $inc: { 'batches.$.capacity': -1 } },
-              { new: true }
+              { _id: booking.workshop },
+              { $inc: { 'batches.$[elem].capacity': -1 } },
+              { new: true, arrayFilters: [ { 'elem._id': bIdObj, 'elem.capacity': { $gt: 0 } } ] }
             );
             if (!updated) {
               capacityOk = false;
