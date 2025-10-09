@@ -163,7 +163,7 @@ exports.getWorkshop = async (req, res) => {
         const workshop = await Workshop.findById(id)
             .populate({
               path: 'instructor_user_ids',
-              select: '-password -__v',
+              select: 'first_name last_name email_data phone_data role is_active is_archived media',
               populate: { path: 'media' }
             })
             // .populate('media');
