@@ -21,8 +21,6 @@ exports.createWorkshop = async (req, res) => {
         // media,
         // image,             
         date,
-        capacity,
-        price,
         tags,
         is_cancelled,
         is_active,
@@ -67,9 +65,7 @@ exports.createWorkshop = async (req, res) => {
       if (isNaN(Date.parse(date))) {
         return res.status(400).json({ error: 'Invalid date format' });
       }
-      if (isNaN(Date.parse(start_time)) || isNaN(Date.parse(end_time))) {
-        return res.status(400).json({ error: 'Invalid start_time or end_time format' });
-      }
+      // No legacy start/end time validation; batches are required
   
       // Validate instructor_user_ids and media as arrays if present
       if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
@@ -82,15 +78,36 @@ exports.createWorkshop = async (req, res) => {
       //   return res.status(400).json({ error: 'media must be an array of IDs' });
       // }
   
-      // Convert capacity and price to numbers if they are string
-      if (capacity && typeof capacity === 'string') {
-        capacity = parseInt(capacity, 10);
-        if (isNaN(capacity)) capacity = undefined;
-      }
-      if (price && typeof price === 'string') {
-        price = parseFloat(price);
-        if (isNaN(price)) price = undefined;
-      }
+      // Normalize batch pricing numbers
+      batches = batches.map((batch) => {
+        const normalized = { ...batch };
+        if (normalized.pricing) {
+          const pb = normalized.pricing;
+          if (pb.early_bird) {
+            if (typeof pb.early_bird.price === 'string') {
+              const v = parseFloat(pb.early_bird.price);
+              pb.early_bird.price = isNaN(v) ? undefined : v;
+            }
+            if (typeof pb.early_bird.capacity_limit === 'string') {
+              const c = parseInt(pb.early_bird.capacity_limit, 10);
+              pb.early_bird.capacity_limit = isNaN(c) ? undefined : c;
+            }
+          }
+          if (pb.regular && typeof pb.regular.price === 'string') {
+            const v = parseFloat(pb.regular.price);
+            pb.regular.price = isNaN(v) ? undefined : v;
+          }
+          if (pb.on_the_spot && typeof pb.on_the_spot.price === 'string') {
+            const v = parseFloat(pb.on_the_spot.price);
+            pb.on_the_spot.price = isNaN(v) ? undefined : v;
+          }
+        }
+        if (typeof normalized.capacity === 'string') {
+          const c = parseInt(normalized.capacity, 10);
+          normalized.capacity = isNaN(c) ? undefined : c;
+        }
+        return normalized;
+      });
   
       // Prepare workshop data
       const workshopData = {
@@ -99,8 +116,6 @@ exports.createWorkshop = async (req, res) => {
         instructor_user_ids,
         // media,
         date: new Date(date),
-        capacity,
-        price,
         tags,
         is_cancelled: is_cancelled ?? false,
         is_active: is_active ?? true
@@ -111,7 +126,18 @@ exports.createWorkshop = async (req, res) => {
         start_time: new Date(batch.start_time),
         end_time: new Date(batch.end_time),
         capacity: batch.capacity,
-        price: batch.price,
+        pricing: {
+          early_bird: {
+            price: batch.pricing?.early_bird?.price,
+            capacity_limit: batch.pricing?.early_bird?.capacity_limit
+          },
+          regular: {
+            price: batch.pricing?.regular?.price
+          },
+          on_the_spot: {
+            price: batch.pricing?.on_the_spot?.price
+          }
+        },
         is_cancelled: batch.is_cancelled ?? false
       }));
 
