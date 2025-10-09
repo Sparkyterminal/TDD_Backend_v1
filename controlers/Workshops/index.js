@@ -273,7 +273,7 @@ exports.cancelWorkshop = async (req, res) => {
   
 exports.bookWorkshop = async (req, res) => {
   try {
-    const { workshopId, batchId, name, age, email, mobile_number, gender } = req.body;
+    const { workshopId, batchIds, name, age, email, mobile_number, gender } = req.body;
 
     // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
@@ -282,8 +282,8 @@ exports.bookWorkshop = async (req, res) => {
     if (!isValidObjectId(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
     }
-    if (!batchId) {
-      return res.status(400).json({ error: 'batchId is required' });
+    if (!Array.isArray(batchIds) || batchIds.length === 0) {
+      return res.status(400).json({ error: 'batchIds array is required' });
     }
     if (typeof age !== 'number' || age < 0) {
       return res.status(400).json({ error: 'Invalid age' });
@@ -305,7 +305,21 @@ exports.bookWorkshop = async (req, res) => {
     }
 
     // Find and validate the single batch
-    const batch = workshop?.batches?.id(batchId);
+    // validate all batchIds exist and are available
+    const validBatches = [];
+    for (const bId of batchIds) {
+      if (!isValidObjectId(bId)) {
+        return res.status(400).json({ error: 'Invalid batchId in batchIds' });
+      }
+      const b = workshop?.batches?.id(bId);
+      if (!b || b.is_cancelled) {
+        return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
+      }
+      if (typeof b.capacity === 'number' && b.capacity <= 0) {
+        return res.status(400).json({ error: 'No more slots available for one of the batches.' });
+      }
+      validBatches.push(b);
+    }
     if (!batch || batch.is_cancelled) {
       return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
     }
@@ -314,42 +328,48 @@ exports.bookWorkshop = async (req, res) => {
     }
 
     // Determine pricing tier based on early_bird capacity_limit vs existing bookings
-    const earlyLimit = batch.pricing?.early_bird?.capacity_limit ?? 0;
-    const earlyCount = await Booking.countDocuments({ workshop: workshopId, batch_id: batchId, pricing_tier: 'EARLY_BIRD' });
-    let pricing_tier = 'REGULAR';
-    if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
-      pricing_tier = 'EARLY_BIRD';
-    }
-    let price = null;
-    if (pricing_tier === 'EARLY_BIRD') {
-      price = batch.pricing.early_bird.price;
-    } else if (batch.pricing?.regular?.price != null) {
-      price = batch.pricing.regular.price;
-    } else if (batch.pricing?.on_the_spot?.price != null) {
-      pricing_tier = 'ON_THE_SPOT';
-      price = batch.pricing.on_the_spot.price;
-    } else {
-      price = 0;
+    // Determine pricing per batch and sum total
+    const pricingDetails = [];
+    let totalPrice = 0;
+    for (const b of validBatches) {
+      const bId = b._id.toString();
+      const earlyLimit = b.pricing?.early_bird?.capacity_limit ?? 0;
+      const earlyCount = await Booking.countDocuments({ workshop: workshopId, batch_ids: { $in: [bId] }, 'pricing_details.pricing_tier': 'EARLY_BIRD' });
+      let tier = 'REGULAR';
+      if (earlyLimit > 0 && earlyCount < earlyLimit && b.pricing?.early_bird?.price != null) {
+        tier = 'EARLY_BIRD';
+      }
+      let price = 0;
+      if (tier === 'EARLY_BIRD') {
+        price = b.pricing.early_bird.price;
+      } else if (b.pricing?.regular?.price != null) {
+        price = b.pricing.regular.price;
+      } else if (b.pricing?.on_the_spot?.price != null) {
+        tier = 'ON_THE_SPOT';
+        price = b.pricing.on_the_spot.price;
+      }
+      totalPrice += price;
+      pricingDetails.push({ batch_id: b._id, pricing_tier: tier, price });
     }
 
     const booking = new Booking({
       workshop: workshopId,
-      batch_id: batchId,
+      batch_ids: batchIds,
       name,
       age,
       email,
       mobile_number,
       gender,
       status: 'INITIATED',
-      pricing_tier,
-      price_charged: price,
+      pricing_details: pricingDetails,
+      price_charged: totalPrice,
       paymentResult: { status: 'initiated' }
     });
     await booking.save();
 
     const merchantOrderId = booking._id.toString();
     const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
-    const priceInPaise = Math.round((price || 0) * 100);
+    const priceInPaise = Math.round((totalPrice || 0) * 100);
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
       .merchantOrderId(merchantOrderId)
       .amount(priceInPaise)
@@ -358,7 +378,7 @@ exports.bookWorkshop = async (req, res) => {
     const paymentResponse = await client.pay(paymentRequest);
 
     // Create booking with status INITIATED (pending payment)
-    return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl });
+    return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl, bookingId: booking._id });
 
   } catch (error) {
     console.error('Error in booking workshop:', error);
@@ -381,27 +401,43 @@ exports.getStatusOfPayment = async (req, res) => {
 
     if (status === 'COMPLETED') {
       // Find the booking and related workshop
-      const booking = await Booking.findById(merchantOrderId);
+      const booking = await Booking.findById(merchantOrderId).lean();
       if (!booking) {
         return res.status(404).send("Booking submission not found");
       }
 
-      // Decrement capacity ONLY NOW (payment success), atomically
-      const workshop = await Workshop.findOneAndUpdate(
-        {
-          _id: booking.workshop,
-          is_cancelled: false,
-          is_active: true,
-          capacity: { $gt: 0 }
-        },
-        {
-          $inc: { capacity: -1 }
-        },
-        { new: true }
-      );
+      // If batches have capacity, decrement each atomically; if not set, skip decrement
+      let capacityOk = true;
+      const workshopDoc = await Workshop.findById(booking.workshop).lean();
+      if (!workshopDoc || workshopDoc.is_cancelled === true || workshopDoc.is_active === false) {
+        capacityOk = false;
+      } else {
+        const batchIds = booking.batch_ids && booking.batch_ids.length ? booking.batch_ids : [booking.batch_id].filter(Boolean);
+        for (const bId of batchIds) {
+          const batch = workshopDoc.batches?.find(b => b._id.toString() === bId.toString());
+          if (!batch || batch.is_cancelled) {
+            capacityOk = false;
+            break;
+          }
+          if (typeof batch.capacity === 'number') {
+            const updated = await Workshop.findOneAndUpdate(
+              {
+                _id: booking.workshop,
+                'batches._id': bId,
+                'batches.capacity': { $gt: 0 }
+              },
+              { $inc: { 'batches.$.capacity': -1 } },
+              { new: true }
+            );
+            if (!updated) {
+              capacityOk = false;
+              break;
+            }
+          }
+        }
+      }
 
-      if (!workshop) {
-        // Capacity already full, update booking as failed and redirect failure
+      if (!capacityOk) {
         await Booking.findByIdAndUpdate(
           merchantOrderId,
           {
@@ -423,8 +459,6 @@ exports.getStatusOfPayment = async (req, res) => {
           status: 'CONFIRMED'
         }
       );
-
-      // Optionally, send confirmation SMS here using updated data
 
       return res.redirect(`http://localhost:5173/payment-success`);
     } else {
