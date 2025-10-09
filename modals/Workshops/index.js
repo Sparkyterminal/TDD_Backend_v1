@@ -49,19 +49,36 @@ const workshopSchema = new Schema(
                 type: Number,
                 required: false
             },
-            price: {
-                type: Number,
-                required: false
+            pricing: {
+                early_bird: {
+                    price: {
+                        type: Number,
+                        required: false
+                    },
+                    capacity_limit: {
+                        type: Number,
+                        required: false
+                    }
+                },
+                regular: {
+                    price: {
+                        type: Number,
+                        required: false
+                    }
+                },
+                on_the_spot: {
+                    price: {
+                        type: Number,
+                        required: false
+                    }
+                }
             },
             is_cancelled: {
                 type: Boolean,
                 default: false
             }
         }],
-        capacity: {
-            type: Number,
-            required: false
-        },
+        
         price: {
             type: Number,
             required: false
