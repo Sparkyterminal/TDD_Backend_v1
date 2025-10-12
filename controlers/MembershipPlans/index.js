@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const MembershipPlan = require('../../modals/MembershipPlans');
 const MembershipBooking = require('../../modals/MembershipBooking');
+const ClassType = require('../../modals/ClassTypes');
 const User = require('../../modals/Users');
 const bcrypt = require('bcryptjs');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
@@ -27,7 +28,14 @@ function pick(obj, allowed) {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, price, billing_interval, benefits, is_active, plan_for } = req.body;
+        const { name, description, price, billing_interval, benefits, is_active, plan_for, classTypeId } = req.body;
+        if (!classTypeId || !isValidObjectId(classTypeId)) {
+            return res.status(400).json({ error: 'Valid classTypeId is required' });
+        }
+        const classType = await ClassType.findById(classTypeId).lean();
+        if (!classType) {
+            return res.status(404).json({ error: 'Class type not found' });
+        }
 
         if (!name || typeof name !== 'string') {
             return res.status(400).json({ error: 'Valid name is required' });
@@ -56,7 +64,8 @@ exports.createPlan = async (req, res) => {
             billing_interval: billing_interval || 'MONTHLY',
             benefits: benefits || [],
             plan_for: plan_for || 'ADULTS',
-            is_active: is_active !== undefined ? !!is_active : true
+            is_active: is_active !== undefined ? !!is_active : true,
+            class_type: classType._id
         });
 
         return res.status(201).json(plan);
@@ -76,7 +85,8 @@ exports.getPlans = async (req, res) => {
             is_active,
             interval,
             q,
-            plan_for
+            plan_for,
+            classTypeId
         } = req.query;
 
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -103,9 +113,13 @@ exports.getPlans = async (req, res) => {
             const pattern = new RegExp(q.trim(), 'i');
             filter.$or = [{ name: pattern }, { description: pattern }];
         }
+        if (classTypeId && isValidObjectId(classTypeId)) {
+            filter.class_type = classTypeId;
+        }
 
         const [items, total] = await Promise.all([
             MembershipPlan.find(filter)
+                .populate('class_type')
                 .sort({ [sortField]: sortDir })
                 .skip((pageNum - 1) * limitNum)
                 .limit(limitNum)
@@ -132,7 +146,7 @@ exports.getPlanById = async (req, res) => {
         if (!isValidObjectId(id)) {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
-        const plan = await MembershipPlan.findById(id).lean();
+        const plan = await MembershipPlan.findById(id).populate('class_type').lean();
         if (!plan) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }
@@ -150,7 +164,7 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
 
-        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for'];
+        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'classTypeId'];
         const updateData = pick(req.body, allowed);
 
         if (updateData.price !== undefined) {
@@ -174,11 +188,24 @@ exports.updatePlan = async (req, res) => {
             }
         }
 
+        const updateDoc = { ...updateData };
+        if (updateData.classTypeId !== undefined) {
+            if (!isValidObjectId(updateData.classTypeId)) {
+                return res.status(400).json({ error: 'Invalid classTypeId' });
+            }
+            const classType = await ClassType.findById(updateData.classTypeId).lean();
+            if (!classType) {
+                return res.status(404).json({ error: 'Class type not found' });
+            }
+            updateDoc.class_type = classType._id;
+            delete updateDoc.classTypeId;
+        }
+
         const updated = await MembershipPlan.findByIdAndUpdate(
             id,
-            updateData,
+            updateDoc,
             { new: true, runValidators: true }
-        );
+        ).populate('class_type');
         if (!updated) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }

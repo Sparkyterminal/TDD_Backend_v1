@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
+const ObjectId = Schema.Types.ObjectId;
 
 const membershipPlanSchema = new Schema(
     {
@@ -13,6 +14,11 @@ const membershipPlanSchema = new Schema(
         },
         price: {
             type: Number,
+            required: true
+        },
+        class_type: {
+            type: ObjectId,
+            ref: 'classtype',
             required: true
         },
         paymentResult: {
