@@ -12,23 +12,40 @@ const membershipPlanSchema = new Schema(
             type: String,
             required: false
         },
-        price: {
-            type: Number,
-            required: true
-        },
-        class_type: {
+        dance_type: {
             type: ObjectId,
             ref: 'classtype',
             required: true
         },
-        media: [
-            {
-                type: ObjectId,
-                ref: "media",
-                required: false,
+        prices: {
+            monthly: {
+                type: Number,
+                required: true
+            },
+            quarterly: {
+                type: Number,
+                required: true
+            },
+            half_yearly: {
+                type: Number,
+                required: true
+            },
+            yearly: {
+                type: Number,
+                required: true
             }
-        ],
+        },
+        image: {
+            type: ObjectId,
+            ref: "media",
+            required: false,
+        },
         batches: [{
+            days: {
+                type: [String],
+                enum: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+                required: true
+            },
             start_time: {
                 type: Date,
                 required: true
@@ -46,20 +63,12 @@ const membershipPlanSchema = new Schema(
                 default: true
             }
         }],
-        paymentResult: {
-            status: String,
-          },
-        billing_interval: {
-            type: String,
-            enum: ['MONTHLY', '3_MONTHS','6_MONTHS', 'YEARLY'],
-            default: 'MONTHLY'
-        },
         plan_for: {
             type: String,
-            enum: ['KIDS', 'ADULTS'],
-            default: 'ADULTS'
+            enum: ['KIDS', 'ADULT'],
+            default: 'ADULT'
         },
-        subcategory: {
+        kids_category: {
             type: String,
             enum: ['JUNIOR', 'ADVANCED'],
             required: function() {

@@ -28,37 +28,32 @@ function pick(obj, allowed) {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, price, billing_interval, benefits, is_active, plan_for, subcategory, classTypeId, media, batches } = req.body;
-        if (!classTypeId || !isValidObjectId(classTypeId)) {
-            return res.status(400).json({ error: 'Valid classTypeId is required' });
+        const { name, description, dance_type, prices, benefits, is_active, plan_for, kids_category, image, batches } = req.body;
+        if (!dance_type || !isValidObjectId(dance_type)) {
+            return res.status(400).json({ error: 'Valid dance_type is required' });
         }
-        const classType = await ClassType.findById(classTypeId).lean();
+        const classType = await ClassType.findById(dance_type).lean();
         if (!classType) {
-            return res.status(404).json({ error: 'Class type not found' });
+            return res.status(404).json({ error: 'Dance type not found' });
         }
 
         if (!name || typeof name !== 'string') {
             return res.status(400).json({ error: 'Valid name is required' });
         }
-        if (price === undefined || typeof price !== 'number' || price < 0) {
-            return res.status(400).json({ error: 'Valid price is required' });
+        if (!prices || typeof prices !== 'object') {
+            return res.status(400).json({ error: 'Valid prices object is required' });
         }
-        const intervals = ['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'];
-        if (billing_interval && !intervals.includes(billing_interval)) {
-            return res.status(400).json({ error: 'Invalid billing_interval' });
+        const requiredPrices = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
+        for (const priceType of requiredPrices) {
+            if (prices[priceType] === undefined || typeof prices[priceType] !== 'number' || prices[priceType] < 0) {
+                return res.status(400).json({ error: `Valid ${priceType} price is required` });
+            }
         }
         if (benefits && !Array.isArray(benefits)) {
             return res.status(400).json({ error: 'benefits must be an array of strings' });
         }
-        if (media && !Array.isArray(media)) {
-            return res.status(400).json({ error: 'media must be an array of media IDs' });
-        }
-        if (media && media.length > 0) {
-            for (const mediaId of media) {
-                if (!isValidObjectId(mediaId)) {
-                    return res.status(400).json({ error: 'Invalid media ID in media array' });
-                }
-            }
+        if (image && !isValidObjectId(image)) {
+            return res.status(400).json({ error: 'Invalid image ID' });
         }
         if (batches && !Array.isArray(batches)) {
             return res.status(400).json({ error: 'batches must be an array' });
@@ -77,7 +72,12 @@ exports.createPlan = async (req, res) => {
                 if (!batch.start_time || !batch.end_time) {
                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
                 }
-                if (new Date(batch.start_time) >= new Date(batch.end_time)) {
+                // Validate time format (HH:MM)
+                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+                if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
+                    return res.status(400).json({ error: 'Time must be in HH:MM format' });
+                }
+                if (batch.start_time >= batch.end_time) {
                     return res.status(400).json({ error: 'Batch start_time must be before end_time' });
                 }
                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
@@ -86,29 +86,28 @@ exports.createPlan = async (req, res) => {
             }
         }
         if (plan_for !== undefined) {
-            const allowedAudiences = ['KIDS', 'ADULTS'];
+            const allowedAudiences = ['KIDS', 'ADULT'];
             if (!allowedAudiences.includes(plan_for)) {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
-        if (plan_for === 'KIDS' && (!subcategory || !['JUNIOR', 'ADVANCED'].includes(subcategory))) {
-            return res.status(400).json({ error: 'Subcategory is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        if (plan_for === 'KIDS' && (!kids_category || !['JUNIOR', 'ADVANCED'].includes(kids_category))) {
+            return res.status(400).json({ error: 'Kids category is required for KIDS plans and must be JUNIOR or ADVANCED' });
         }
-        if (plan_for === 'ADULTS' && subcategory) {
-            return res.status(400).json({ error: 'Subcategory should not be provided for ADULTS plans' });
+        if (plan_for === 'ADULT' && kids_category) {
+            return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });
         }
 
         const plan = await MembershipPlan.create({
             name,
             description,
-            price,
-            billing_interval: billing_interval || 'MONTHLY',
+            dance_type: classType._id,
+            prices,
             benefits: benefits || [],
-            plan_for: plan_for || 'ADULTS',
-            subcategory: plan_for === 'KIDS' ? subcategory : undefined,
+            plan_for: plan_for || 'ADULT',
+            kids_category: plan_for === 'KIDS' ? kids_category : undefined,
             is_active: is_active !== undefined ? !!is_active : true,
-            class_type: classType._id,
-            media: media || [],
+            image: image || undefined,
             batches: batches || []
         });
 
@@ -151,25 +150,25 @@ exports.getPlans = async (req, res) => {
             if (intervals.includes(interval)) filter.billing_interval = interval;
         }
         if (plan_for) {
-            const allowedAudiences = ['KIDS', 'ADULTS'];
+            const allowedAudiences = ['KIDS', 'ADULT'];
             if (allowedAudiences.includes(plan_for)) filter.plan_for = plan_for;
         }
         if (subcategory) {
             const allowedSubcategories = ['JUNIOR', 'ADVANCED'];
-            if (allowedSubcategories.includes(subcategory)) filter.subcategory = subcategory;
+            if (allowedSubcategories.includes(subcategory)) filter.kids_category = subcategory;
         }
         if (q && typeof q === 'string' && q.trim()) {
             const pattern = new RegExp(q.trim(), 'i');
             filter.$or = [{ name: pattern }, { description: pattern }];
         }
         if (classTypeId && isValidObjectId(classTypeId)) {
-            filter.class_type = classTypeId;
+            filter.dance_type = classTypeId;
         }
 
         const [items, total] = await Promise.all([
             MembershipPlan.find(filter)
-                .populate('class_type')
-                .populate('media')
+                .populate('dance_type')
+                .populate('image')
                 .sort({ [sortField]: sortDir })
                 .skip((pageNum - 1) * limitNum)
                 .limit(limitNum)
@@ -196,7 +195,7 @@ exports.getPlanById = async (req, res) => {
         if (!isValidObjectId(id)) {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
-        const plan = await MembershipPlan.findById(id).populate('class_type').populate('media').lean();
+        const plan = await MembershipPlan.findById(id).populate('dance_type').populate('image').lean();
         if (!plan) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }
@@ -214,43 +213,43 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
 
-        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'subcategory', 'classTypeId', 'media', 'batches'];
+        const allowed = ['name', 'description', 'prices', 'benefits', 'is_active', 'plan_for', 'kids_category', 'dance_type', 'image', 'batches'];
         const updateData = pick(req.body, allowed);
 
-        if (updateData.price !== undefined) {
-            if (typeof updateData.price !== 'number' || updateData.price < 0) {
-                return res.status(400).json({ error: 'Invalid price' });
+        if (updateData.prices !== undefined) {
+            if (typeof updateData.prices !== 'object') {
+                return res.status(400).json({ error: 'Invalid prices object' });
             }
-        }
-        if (updateData.billing_interval !== undefined) {
-            const intervals = ['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'];
-            if (!intervals.includes(updateData.billing_interval)) {
-                return res.status(400).json({ error: 'Invalid billing_interval' });
+            const requiredPrices = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
+            for (const priceType of requiredPrices) {
+                if (updateData.prices[priceType] === undefined || typeof updateData.prices[priceType] !== 'number' || updateData.prices[priceType] < 0) {
+                    return res.status(400).json({ error: `Valid ${priceType} price is required` });
+                }
             }
         }
         if (updateData.benefits !== undefined && !Array.isArray(updateData.benefits)) {
             return res.status(400).json({ error: 'benefits must be an array' });
         }
         if (updateData.plan_for !== undefined) {
-            const allowedAudiences = ['KIDS', 'ADULTS'];
+            const allowedAudiences = ['KIDS', 'ADULT'];
             if (!allowedAudiences.includes(updateData.plan_for)) {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
-        if (updateData.plan_for === 'KIDS' && (!updateData.subcategory || !['JUNIOR', 'ADVANCED'].includes(updateData.subcategory))) {
-            return res.status(400).json({ error: 'Subcategory is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        if (updateData.plan_for === 'KIDS' && (!updateData.kids_category || !['JUNIOR', 'ADVANCED'].includes(updateData.kids_category))) {
+            return res.status(400).json({ error: 'Kids category is required for KIDS plans and must be JUNIOR or ADVANCED' });
         }
-        if (updateData.plan_for === 'ADULTS' && updateData.subcategory) {
-            return res.status(400).json({ error: 'Subcategory should not be provided for ADULTS plans' });
+        if (updateData.plan_for === 'ADULT' && updateData.kids_category) {
+            return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });
         }
-        if (updateData.media !== undefined) {
-            if (!Array.isArray(updateData.media)) {
-                return res.status(400).json({ error: 'media must be an array of media IDs' });
+        if (updateData.dance_type !== undefined) {
+            if (!isValidObjectId(updateData.dance_type)) {
+                return res.status(400).json({ error: 'Invalid dance_type ID' });
             }
-            for (const mediaId of updateData.media) {
-                if (!isValidObjectId(mediaId)) {
-                    return res.status(400).json({ error: 'Invalid media ID in media array' });
-                }
+        }
+        if (updateData.image !== undefined) {
+            if (updateData.image && !isValidObjectId(updateData.image)) {
+                return res.status(400).json({ error: 'Invalid image ID' });
             }
         }
         if (updateData.batches !== undefined) {
@@ -270,7 +269,12 @@ exports.updatePlan = async (req, res) => {
                 if (!batch.start_time || !batch.end_time) {
                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
                 }
-                if (new Date(batch.start_time) >= new Date(batch.end_time)) {
+                // Validate time format (HH:MM)
+                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+                if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
+                    return res.status(400).json({ error: 'Time must be in HH:MM format' });
+                }
+                if (batch.start_time >= batch.end_time) {
                     return res.status(400).json({ error: 'Batch start_time must be before end_time' });
                 }
                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
@@ -280,23 +284,18 @@ exports.updatePlan = async (req, res) => {
         }
 
         const updateDoc = { ...updateData };
-        if (updateData.classTypeId !== undefined) {
-            if (!isValidObjectId(updateData.classTypeId)) {
-                return res.status(400).json({ error: 'Invalid classTypeId' });
-            }
-            const classType = await ClassType.findById(updateData.classTypeId).lean();
+        if (updateData.dance_type !== undefined) {
+            const classType = await ClassType.findById(updateData.dance_type).lean();
             if (!classType) {
-                return res.status(404).json({ error: 'Class type not found' });
+                return res.status(404).json({ error: 'Dance type not found' });
             }
-            updateDoc.class_type = classType._id;
-            delete updateDoc.classTypeId;
         }
 
         const updated = await MembershipPlan.findByIdAndUpdate(
             id,
             updateDoc,
             { new: true, runValidators: true }
-        ).populate('class_type').populate('media');
+        ).populate('dance_type').populate('image');
         if (!updated) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }
