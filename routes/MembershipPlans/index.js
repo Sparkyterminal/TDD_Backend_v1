@@ -30,6 +30,19 @@ const validateMembershipPlan = [
     .optional()
     .isIn(['KIDS', 'ADULTS'])
     .withMessage('Invalid plan_for'),
+  body('subcategory')
+    .optional()
+    .isIn(['JUNIOR', 'ADVANCED'])
+    .withMessage('Subcategory must be JUNIOR or ADVANCED')
+    .custom((value, { req }) => {
+      if (req.body.plan_for === 'KIDS' && !value) {
+        throw new Error('Subcategory is required for KIDS plans');
+      }
+      if (req.body.plan_for === 'ADULTS' && value) {
+        throw new Error('Subcategory should not be provided for ADULTS plans');
+      }
+      return true;
+    }),
   body('benefits')
     .optional()
     .isArray()
@@ -95,6 +108,19 @@ const validateUpdateMembershipPlan = [
     .optional()
     .isIn(['KIDS', 'ADULTS'])
     .withMessage('Invalid plan_for'),
+  body('subcategory')
+    .optional()
+    .isIn(['JUNIOR', 'ADVANCED'])
+    .withMessage('Subcategory must be JUNIOR or ADVANCED')
+    .custom((value, { req }) => {
+      if (req.body.plan_for === 'KIDS' && !value) {
+        throw new Error('Subcategory is required for KIDS plans');
+      }
+      if (req.body.plan_for === 'ADULTS' && value) {
+        throw new Error('Subcategory should not be provided for ADULTS plans');
+      }
+      return true;
+    }),
   body('benefits')
     .optional()
     .isArray()
@@ -166,6 +192,10 @@ const validatePagination = [
     .optional()
     .isIn(['KIDS', 'ADULTS'])
     .withMessage('Invalid plan_for filter'),
+  query('subcategory')
+    .optional()
+    .isIn(['JUNIOR', 'ADVANCED'])
+    .withMessage('Invalid subcategory filter'),
   query('classTypeId')
     .optional()
     .isMongoId()

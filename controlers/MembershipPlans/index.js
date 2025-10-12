@@ -28,7 +28,7 @@ function pick(obj, allowed) {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, price, billing_interval, benefits, is_active, plan_for, classTypeId, media, batches } = req.body;
+        const { name, description, price, billing_interval, benefits, is_active, plan_for, subcategory, classTypeId, media, batches } = req.body;
         if (!classTypeId || !isValidObjectId(classTypeId)) {
             return res.status(400).json({ error: 'Valid classTypeId is required' });
         }
@@ -82,6 +82,12 @@ exports.createPlan = async (req, res) => {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
+        if (plan_for === 'KIDS' && (!subcategory || !['JUNIOR', 'ADVANCED'].includes(subcategory))) {
+            return res.status(400).json({ error: 'Subcategory is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        }
+        if (plan_for === 'ADULTS' && subcategory) {
+            return res.status(400).json({ error: 'Subcategory should not be provided for ADULTS plans' });
+        }
 
         const plan = await MembershipPlan.create({
             name,
@@ -90,6 +96,7 @@ exports.createPlan = async (req, res) => {
             billing_interval: billing_interval || 'MONTHLY',
             benefits: benefits || [],
             plan_for: plan_for || 'ADULTS',
+            subcategory: plan_for === 'KIDS' ? subcategory : undefined,
             is_active: is_active !== undefined ? !!is_active : true,
             class_type: classType._id,
             media: media || [],
@@ -114,6 +121,7 @@ exports.getPlans = async (req, res) => {
             interval,
             q,
             plan_for,
+            subcategory,
             classTypeId
         } = req.query;
 
@@ -136,6 +144,10 @@ exports.getPlans = async (req, res) => {
         if (plan_for) {
             const allowedAudiences = ['KIDS', 'ADULTS'];
             if (allowedAudiences.includes(plan_for)) filter.plan_for = plan_for;
+        }
+        if (subcategory) {
+            const allowedSubcategories = ['JUNIOR', 'ADVANCED'];
+            if (allowedSubcategories.includes(subcategory)) filter.subcategory = subcategory;
         }
         if (q && typeof q === 'string' && q.trim()) {
             const pattern = new RegExp(q.trim(), 'i');
@@ -193,7 +205,7 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
 
-        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'classTypeId', 'media', 'batches'];
+        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'subcategory', 'classTypeId', 'media', 'batches'];
         const updateData = pick(req.body, allowed);
 
         if (updateData.price !== undefined) {
@@ -215,6 +227,12 @@ exports.updatePlan = async (req, res) => {
             if (!allowedAudiences.includes(updateData.plan_for)) {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
+        }
+        if (updateData.plan_for === 'KIDS' && (!updateData.subcategory || !['JUNIOR', 'ADVANCED'].includes(updateData.subcategory))) {
+            return res.status(400).json({ error: 'Subcategory is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        }
+        if (updateData.plan_for === 'ADULTS' && updateData.subcategory) {
+            return res.status(400).json({ error: 'Subcategory should not be provided for ADULTS plans' });
         }
         if (updateData.media !== undefined) {
             if (!Array.isArray(updateData.media)) {
