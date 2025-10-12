@@ -10,6 +10,7 @@ const INTERVAL_TO_MONTHS = {
     YEARLY: 12
 };
 
+// Add fields to store billing information
 const membershipBookingSchema = new Schema(
     {
         user: {
@@ -20,6 +21,12 @@ const membershipBookingSchema = new Schema(
         plan: {
             type: ObjectId,
             ref: 'membershipplan',
+            required: true
+        },
+        // Store billing period information
+        billing_period: {
+            type: String,
+            enum: ['monthly', 'quarterly', 'half_yearly', 'yearly'],
             required: true
         },
         // Snapshot critical plan data at booking time for historical accuracy
@@ -63,30 +70,16 @@ const membershipBookingSchema = new Schema(
     }
 );
 
-// Derive end_date if not provided based on billing_interval
+// Derive end_date if not provided based on billing_period
 membershipBookingSchema.pre('validate', async function (next) {
     try {
         // If end_date already set, trust it
         if (this.end_date) return next();
 
-        let interval = this.billing_interval;
-        // If not present in snapshot, attempt to fetch from plan
-        if (!interval && this.plan) {
-            const PlanModel = mongoose.model('membershipplan');
-            const planDoc = await PlanModel.findById(this.plan).lean();
-            if (planDoc) {
-                interval = planDoc.billing_interval;
-                this.billing_interval = this.billing_interval || planDoc.billing_interval;
-                this.plan_for = this.plan_for || planDoc.plan_for;
-                this.plan_name = this.plan_name || planDoc.name;
-                this.amount_paid = this.amount_paid == null ? planDoc.price : this.amount_paid;
-            }
-        }
-
-        if (!interval || !INTERVAL_TO_MONTHS[interval]) return next();
+        if (!this.billing_period || !INTERVAL_TO_MONTHS[this.billing_period.toUpperCase()]) return next();
 
         const start = this.start_date ? new Date(this.start_date) : new Date();
-        const monthsToAdd = INTERVAL_TO_MONTHS[interval];
+        const monthsToAdd = INTERVAL_TO_MONTHS[this.billing_period.toUpperCase()];
         const end = new Date(start);
         end.setMonth(end.getMonth() + monthsToAdd);
         this.end_date = end;

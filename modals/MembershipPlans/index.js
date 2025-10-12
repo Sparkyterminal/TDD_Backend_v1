@@ -24,15 +24,15 @@ const membershipPlanSchema = new Schema(
             },
             quarterly: {
                 type: Number,
-                required: true
+                required: false
             },
             half_yearly: {
                 type: Number,
-                required: true
+                required: false
             },
             yearly: {
                 type: Number,
-                required: true
+                required: false
             }
         },
         image: {
@@ -65,14 +65,14 @@ const membershipPlanSchema = new Schema(
         }],
         plan_for: {
             type: String,
-            enum: ['KIDS', 'ADULT'],
+            enum: ['KID', 'KIDS', 'ADULT'],
             default: 'ADULT'
         },
         kids_category: {
             type: String,
             enum: ['JUNIOR', 'ADVANCED'],
             required: function() {
-                return this.plan_for === 'KIDS';
+                return this.plan_for === 'KID' || this.plan_for === 'KIDS';
             }
         },
         benefits: {
