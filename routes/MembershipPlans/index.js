@@ -16,30 +16,38 @@ const validateMembershipPlan = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Description must not exceed 500 characters'),
-  body('price')
+  body('prices')
+    .isObject()
+    .withMessage('Prices must be an object'),
+  body('prices.monthly')
     .isFloat({ min: 0 })
-    .withMessage('Price must be a non-negative number'),
-  body('classTypeId')
+    .withMessage('Monthly price must be a non-negative number'),
+  body('prices.quarterly')
+    .isFloat({ min: 0 })
+    .withMessage('Quarterly price must be a non-negative number'),
+  body('prices.half_yearly')
+    .isFloat({ min: 0 })
+    .withMessage('Half yearly price must be a non-negative number'),
+  body('prices.yearly')
+    .isFloat({ min: 0 })
+    .withMessage('Yearly price must be a non-negative number'),
+  body('dance_type')
     .isMongoId()
-    .withMessage('Valid classTypeId is required'),
-  body('billing_interval')
-    .optional()
-    .isIn(['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'])
-    .withMessage('Invalid billing_interval'),
+    .withMessage('Valid dance_type is required'),
   body('plan_for')
     .optional()
-    .isIn(['KIDS', 'ADULTS'])
+    .isIn(['KIDS', 'ADULT'])
     .withMessage('Invalid plan_for'),
-  body('subcategory')
+  body('kids_category')
     .optional()
     .isIn(['JUNIOR', 'ADVANCED'])
-    .withMessage('Subcategory must be JUNIOR or ADVANCED')
+    .withMessage('Kids category must be JUNIOR or ADVANCED')
     .custom((value, { req }) => {
       if (req.body.plan_for === 'KIDS' && !value) {
-        throw new Error('Subcategory is required for KIDS plans');
+        throw new Error('Kids category is required for KIDS plans');
       }
-      if (req.body.plan_for === 'ADULTS' && value) {
-        throw new Error('Subcategory should not be provided for ADULTS plans');
+      if (req.body.plan_for === 'ADULT' && value) {
+        throw new Error('Kids category should not be provided for ADULT plans');
       }
       return true;
     }),
@@ -51,17 +59,10 @@ const validateMembershipPlan = [
     .optional()
     .isBoolean()
     .withMessage('is_active must be a boolean value'),
-  body('media')
+  body('image')
     .optional()
-    .isArray()
-    .withMessage('Media must be an array')
-    .custom((mediaArr) => {
-      if (mediaArr && mediaArr.length > 0) {
-        return mediaArr.every(id => /^[a-fA-F0-9]{24}$/.test(id));
-      }
-      return true;
-    })
-    .withMessage('All media items must be valid ObjectIds'),
+    .isMongoId()
+    .withMessage('Image must be a valid ObjectId'),
   body('batches')
     .optional()
     .isArray()
@@ -70,10 +71,12 @@ const validateMembershipPlan = [
       if (batches && batches.length > 0) {
         const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
         return batches.every(batch => {
+          const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
           return batch.days && Array.isArray(batch.days) && batch.days.length > 0 &&
                  batch.days.every(day => validDays.includes(day)) &&
                  batch.start_time && batch.end_time && 
-                 new Date(batch.start_time) < new Date(batch.end_time) &&
+                 timeRegex.test(batch.start_time) && timeRegex.test(batch.end_time) &&
+                 batch.start_time < batch.end_time &&
                  (batch.capacity === undefined || (typeof batch.capacity === 'number' && batch.capacity >= 0));
         });
       }
@@ -132,17 +135,10 @@ const validateUpdateMembershipPlan = [
     .optional()
     .isBoolean()
     .withMessage('is_active must be a boolean value'),
-  body('media')
+  body('image')
     .optional()
-    .isArray()
-    .withMessage('Media must be an array')
-    .custom((mediaArr) => {
-      if (mediaArr && mediaArr.length > 0) {
-        return mediaArr.every(id => /^[a-fA-F0-9]{24}$/.test(id));
-      }
-      return true;
-    })
-    .withMessage('All media items must be valid ObjectIds'),
+    .isMongoId()
+    .withMessage('Image must be a valid ObjectId'),
   body('batches')
     .optional()
     .isArray()
@@ -151,10 +147,12 @@ const validateUpdateMembershipPlan = [
       if (batches && batches.length > 0) {
         const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
         return batches.every(batch => {
+          const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
           return batch.days && Array.isArray(batch.days) && batch.days.length > 0 &&
                  batch.days.every(day => validDays.includes(day)) &&
                  batch.start_time && batch.end_time && 
-                 new Date(batch.start_time) < new Date(batch.end_time) &&
+                 timeRegex.test(batch.start_time) && timeRegex.test(batch.end_time) &&
+                 batch.start_time < batch.end_time &&
                  (batch.capacity === undefined || (typeof batch.capacity === 'number' && batch.capacity >= 0));
         });
       }
@@ -190,18 +188,14 @@ const validatePagination = [
     .optional()
     .isBoolean()
     .withMessage('is_active filter must be a boolean value'),
-  query('interval')
-    .optional()
-    .isIn(['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'])
-    .withMessage('Invalid interval filter'),
   query('plan_for')
     .optional()
-    .isIn(['KIDS', 'ADULTS'])
+    .isIn(['KIDS', 'ADULT'])
     .withMessage('Invalid plan_for filter'),
-  query('subcategory')
+  query('kids_category')
     .optional()
     .isIn(['JUNIOR', 'ADVANCED'])
-    .withMessage('Invalid subcategory filter'),
+    .withMessage('Invalid kids_category filter'),
   query('classTypeId')
     .optional()
     .isMongoId()
