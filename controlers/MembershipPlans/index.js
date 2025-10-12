@@ -65,6 +65,15 @@ exports.createPlan = async (req, res) => {
         }
         if (batches && batches.length > 0) {
             for (const batch of batches) {
+                if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
+                    return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+                }
+                const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+                for (const day of batch.days) {
+                    if (!validDays.includes(day)) {
+                        return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+                    }
+                }
                 if (!batch.start_time || !batch.end_time) {
                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
                 }
@@ -249,6 +258,15 @@ exports.updatePlan = async (req, res) => {
                 return res.status(400).json({ error: 'batches must be an array' });
             }
             for (const batch of updateData.batches) {
+                if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
+                    return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+                }
+                const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+                for (const day of batch.days) {
+                    if (!validDays.includes(day)) {
+                        return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+                    }
+                }
                 if (!batch.start_time || !batch.end_time) {
                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
                 }

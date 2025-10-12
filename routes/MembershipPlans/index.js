@@ -68,15 +68,18 @@ const validateMembershipPlan = [
     .withMessage('Batches must be an array')
     .custom((batches) => {
       if (batches && batches.length > 0) {
+        const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
         return batches.every(batch => {
-          return batch.start_time && batch.end_time && 
+          return batch.days && Array.isArray(batch.days) && batch.days.length > 0 &&
+                 batch.days.every(day => validDays.includes(day)) &&
+                 batch.start_time && batch.end_time && 
                  new Date(batch.start_time) < new Date(batch.end_time) &&
                  (batch.capacity === undefined || (typeof batch.capacity === 'number' && batch.capacity >= 0));
         });
       }
       return true;
     })
-    .withMessage('Each batch must have valid start_time, end_time, and optional capacity')
+    .withMessage('Each batch must have valid days array, start_time, end_time, and optional capacity')
 ];
 
 const validateUpdateMembershipPlan = [
@@ -146,15 +149,18 @@ const validateUpdateMembershipPlan = [
     .withMessage('Batches must be an array')
     .custom((batches) => {
       if (batches && batches.length > 0) {
+        const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
         return batches.every(batch => {
-          return batch.start_time && batch.end_time && 
+          return batch.days && Array.isArray(batch.days) && batch.days.length > 0 &&
+                 batch.days.every(day => validDays.includes(day)) &&
+                 batch.start_time && batch.end_time && 
                  new Date(batch.start_time) < new Date(batch.end_time) &&
                  (batch.capacity === undefined || (typeof batch.capacity === 'number' && batch.capacity >= 0));
         });
       }
       return true;
     })
-    .withMessage('Each batch must have valid start_time, end_time, and optional capacity')
+    .withMessage('Each batch must have valid days array, start_time, end_time, and optional capacity')
 ];
 
 const validateId = [
