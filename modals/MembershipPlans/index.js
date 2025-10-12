@@ -59,6 +59,13 @@ const membershipPlanSchema = new Schema(
             enum: ['KIDS', 'ADULTS'],
             default: 'ADULTS'
         },
+        subcategory: {
+            type: String,
+            enum: ['JUNIOR', 'ADVANCED'],
+            required: function() {
+                return this.plan_for === 'KIDS';
+            }
+        },
         benefits: {
             type: [String],
             default: []
