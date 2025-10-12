@@ -28,7 +28,7 @@ function pick(obj, allowed) {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, price, billing_interval, benefits, is_active, plan_for, classTypeId } = req.body;
+        const { name, description, price, billing_interval, benefits, is_active, plan_for, classTypeId, media, batches } = req.body;
         if (!classTypeId || !isValidObjectId(classTypeId)) {
             return res.status(400).json({ error: 'Valid classTypeId is required' });
         }
@@ -50,6 +50,32 @@ exports.createPlan = async (req, res) => {
         if (benefits && !Array.isArray(benefits)) {
             return res.status(400).json({ error: 'benefits must be an array of strings' });
         }
+        if (media && !Array.isArray(media)) {
+            return res.status(400).json({ error: 'media must be an array of media IDs' });
+        }
+        if (media && media.length > 0) {
+            for (const mediaId of media) {
+                if (!isValidObjectId(mediaId)) {
+                    return res.status(400).json({ error: 'Invalid media ID in media array' });
+                }
+            }
+        }
+        if (batches && !Array.isArray(batches)) {
+            return res.status(400).json({ error: 'batches must be an array' });
+        }
+        if (batches && batches.length > 0) {
+            for (const batch of batches) {
+                if (!batch.start_time || !batch.end_time) {
+                    return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
+                }
+                if (new Date(batch.start_time) >= new Date(batch.end_time)) {
+                    return res.status(400).json({ error: 'Batch start_time must be before end_time' });
+                }
+                if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
+                    return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
+                }
+            }
+        }
         if (plan_for !== undefined) {
             const allowedAudiences = ['KIDS', 'ADULTS'];
             if (!allowedAudiences.includes(plan_for)) {
@@ -65,7 +91,9 @@ exports.createPlan = async (req, res) => {
             benefits: benefits || [],
             plan_for: plan_for || 'ADULTS',
             is_active: is_active !== undefined ? !!is_active : true,
-            class_type: classType._id
+            class_type: classType._id,
+            media: media || [],
+            batches: batches || []
         });
 
         return res.status(201).json(plan);
@@ -120,6 +148,7 @@ exports.getPlans = async (req, res) => {
         const [items, total] = await Promise.all([
             MembershipPlan.find(filter)
                 .populate('class_type')
+                .populate('media')
                 .sort({ [sortField]: sortDir })
                 .skip((pageNum - 1) * limitNum)
                 .limit(limitNum)
@@ -146,7 +175,7 @@ exports.getPlanById = async (req, res) => {
         if (!isValidObjectId(id)) {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
-        const plan = await MembershipPlan.findById(id).populate('class_type').lean();
+        const plan = await MembershipPlan.findById(id).populate('class_type').populate('media').lean();
         if (!plan) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }
@@ -164,7 +193,7 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'Invalid plan ID' });
         }
 
-        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'classTypeId'];
+        const allowed = ['name', 'description', 'price', 'billing_interval', 'benefits', 'is_active', 'plan_for', 'classTypeId', 'media', 'batches'];
         const updateData = pick(req.body, allowed);
 
         if (updateData.price !== undefined) {
@@ -187,6 +216,32 @@ exports.updatePlan = async (req, res) => {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
+        if (updateData.media !== undefined) {
+            if (!Array.isArray(updateData.media)) {
+                return res.status(400).json({ error: 'media must be an array of media IDs' });
+            }
+            for (const mediaId of updateData.media) {
+                if (!isValidObjectId(mediaId)) {
+                    return res.status(400).json({ error: 'Invalid media ID in media array' });
+                }
+            }
+        }
+        if (updateData.batches !== undefined) {
+            if (!Array.isArray(updateData.batches)) {
+                return res.status(400).json({ error: 'batches must be an array' });
+            }
+            for (const batch of updateData.batches) {
+                if (!batch.start_time || !batch.end_time) {
+                    return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
+                }
+                if (new Date(batch.start_time) >= new Date(batch.end_time)) {
+                    return res.status(400).json({ error: 'Batch start_time must be before end_time' });
+                }
+                if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
+                    return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
+                }
+            }
+        }
 
         const updateDoc = { ...updateData };
         if (updateData.classTypeId !== undefined) {
@@ -205,7 +260,7 @@ exports.updatePlan = async (req, res) => {
             id,
             updateDoc,
             { new: true, runValidators: true }
-        ).populate('class_type');
+        ).populate('class_type').populate('media');
         if (!updated) {
             return res.status(404).json({ error: 'Membership plan not found' });
         }
