@@ -43,9 +43,13 @@ exports.createPlan = async (req, res) => {
         if (!prices || typeof prices !== 'object') {
             return res.status(400).json({ error: 'Valid prices object is required' });
         }
-        const requiredPrices = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
-        for (const priceType of requiredPrices) {
-            if (prices[priceType] === undefined || typeof prices[priceType] !== 'number' || prices[priceType] < 0) {
+        if (prices.monthly === undefined || typeof prices.monthly !== 'number' || prices.monthly < 0) {
+            return res.status(400).json({ error: 'Valid monthly price is required' });
+        }
+        // Validate other prices if provided
+        const optionalPrices = ['quarterly', 'half_yearly', 'yearly'];
+        for (const priceType of optionalPrices) {
+            if (prices[priceType] !== undefined && (typeof prices[priceType] !== 'number' || prices[priceType] < 0)) {
                 return res.status(400).json({ error: `Valid ${priceType} price is required` });
             }
         }
@@ -86,13 +90,13 @@ exports.createPlan = async (req, res) => {
             }
         }
         if (plan_for !== undefined) {
-            const allowedAudiences = ['KIDS', 'ADULT'];
+            const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
             if (!allowedAudiences.includes(plan_for)) {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
-        if (plan_for === 'KIDS' && (!kids_category || !['JUNIOR', 'ADVANCED'].includes(kids_category))) {
-            return res.status(400).json({ error: 'Kids category is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        if ((plan_for === 'KID' || plan_for === 'KIDS') && (!kids_category || !['JUNIOR', 'ADVANCED'].includes(kids_category))) {
+            return res.status(400).json({ error: 'Kids category is required for KID/KIDS plans and must be JUNIOR or ADVANCED' });
         }
         if (plan_for === 'ADULT' && kids_category) {
             return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });
@@ -105,7 +109,7 @@ exports.createPlan = async (req, res) => {
             prices,
             benefits: benefits || [],
             plan_for: plan_for || 'ADULT',
-            kids_category: plan_for === 'KIDS' ? kids_category : undefined,
+            kids_category: (plan_for === 'KID' || plan_for === 'KIDS') ? kids_category : undefined,
             is_active: is_active !== undefined ? !!is_active : true,
             image: image || undefined,
             batches: batches || []
@@ -150,7 +154,7 @@ exports.getPlans = async (req, res) => {
             if (intervals.includes(interval)) filter.billing_interval = interval;
         }
         if (plan_for) {
-            const allowedAudiences = ['KIDS', 'ADULT'];
+            const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
             if (allowedAudiences.includes(plan_for)) filter.plan_for = plan_for;
         }
         if (subcategory) {
@@ -220,9 +224,12 @@ exports.updatePlan = async (req, res) => {
             if (typeof updateData.prices !== 'object') {
                 return res.status(400).json({ error: 'Invalid prices object' });
             }
-            const requiredPrices = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
-            for (const priceType of requiredPrices) {
-                if (updateData.prices[priceType] === undefined || typeof updateData.prices[priceType] !== 'number' || updateData.prices[priceType] < 0) {
+            if (updateData.prices.monthly !== undefined && (typeof updateData.prices.monthly !== 'number' || updateData.prices.monthly < 0)) {
+                return res.status(400).json({ error: 'Valid monthly price is required' });
+            }
+            const optionalPrices = ['quarterly', 'half_yearly', 'yearly'];
+            for (const priceType of optionalPrices) {
+                if (updateData.prices[priceType] !== undefined && (typeof updateData.prices[priceType] !== 'number' || updateData.prices[priceType] < 0)) {
                     return res.status(400).json({ error: `Valid ${priceType} price is required` });
                 }
             }
@@ -231,13 +238,13 @@ exports.updatePlan = async (req, res) => {
             return res.status(400).json({ error: 'benefits must be an array' });
         }
         if (updateData.plan_for !== undefined) {
-            const allowedAudiences = ['KIDS', 'ADULT'];
+            const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
             if (!allowedAudiences.includes(updateData.plan_for)) {
                 return res.status(400).json({ error: 'Invalid plan_for' });
             }
         }
-        if (updateData.plan_for === 'KIDS' && (!updateData.kids_category || !['JUNIOR', 'ADVANCED'].includes(updateData.kids_category))) {
-            return res.status(400).json({ error: 'Kids category is required for KIDS plans and must be JUNIOR or ADVANCED' });
+        if ((updateData.plan_for === 'KID' || updateData.plan_for === 'KIDS') && (!updateData.kids_category || !['JUNIOR', 'ADVANCED'].includes(updateData.kids_category))) {
+            return res.status(400).json({ error: 'Kids category is required for KID/KIDS plans and must be JUNIOR or ADVANCED' });
         }
         if (updateData.plan_for === 'ADULT' && updateData.kids_category) {
             return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });

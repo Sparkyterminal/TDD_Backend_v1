@@ -23,12 +23,15 @@ const validateMembershipPlan = [
     .isFloat({ min: 0 })
     .withMessage('Monthly price must be a non-negative number'),
   body('prices.quarterly')
+    .optional()
     .isFloat({ min: 0 })
     .withMessage('Quarterly price must be a non-negative number'),
   body('prices.half_yearly')
+    .optional()
     .isFloat({ min: 0 })
     .withMessage('Half yearly price must be a non-negative number'),
   body('prices.yearly')
+    .optional()
     .isFloat({ min: 0 })
     .withMessage('Yearly price must be a non-negative number'),
   body('dance_type')
@@ -36,15 +39,15 @@ const validateMembershipPlan = [
     .withMessage('Valid dance_type is required'),
   body('plan_for')
     .optional()
-    .isIn(['KIDS', 'ADULT'])
+    .isIn(['KID', 'KIDS', 'ADULT'])
     .withMessage('Invalid plan_for'),
   body('kids_category')
     .optional()
     .isIn(['JUNIOR', 'ADVANCED'])
     .withMessage('Kids category must be JUNIOR or ADVANCED')
     .custom((value, { req }) => {
-      if (req.body.plan_for === 'KIDS' && !value) {
-        throw new Error('Kids category is required for KIDS plans');
+      if ((req.body.plan_for === 'KID' || req.body.plan_for === 'KIDS') && !value) {
+        throw new Error('Kids category is required for KID/KIDS plans');
       }
       if (req.body.plan_for === 'ADULT' && value) {
         throw new Error('Kids category should not be provided for ADULT plans');
@@ -98,32 +101,44 @@ const validateUpdateMembershipPlan = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Description must not exceed 500 characters'),
-  body('price')
+  body('prices')
+    .optional()
+    .isObject()
+    .withMessage('Prices must be an object'),
+  body('prices.monthly')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Price must be a non-negative number'),
-  body('classTypeId')
+    .withMessage('Monthly price must be a non-negative number'),
+  body('prices.quarterly')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Quarterly price must be a non-negative number'),
+  body('prices.half_yearly')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Half yearly price must be a non-negative number'),
+  body('prices.yearly')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Yearly price must be a non-negative number'),
+  body('dance_type')
     .optional()
     .isMongoId()
-    .withMessage('Valid classTypeId is required'),
-  body('billing_interval')
-    .optional()
-    .isIn(['MONTHLY', '3_MONTHS', '6_MONTHS', 'YEARLY'])
-    .withMessage('Invalid billing_interval'),
+    .withMessage('Valid dance_type is required'),
   body('plan_for')
     .optional()
-    .isIn(['KIDS', 'ADULTS'])
+    .isIn(['KID', 'KIDS', 'ADULT'])
     .withMessage('Invalid plan_for'),
-  body('subcategory')
+  body('kids_category')
     .optional()
     .isIn(['JUNIOR', 'ADVANCED'])
-    .withMessage('Subcategory must be JUNIOR or ADVANCED')
+    .withMessage('Kids category must be JUNIOR or ADVANCED')
     .custom((value, { req }) => {
-      if (req.body.plan_for === 'KIDS' && !value) {
-        throw new Error('Subcategory is required for KIDS plans');
+      if ((req.body.plan_for === 'KID' || req.body.plan_for === 'KIDS') && !value) {
+        throw new Error('Kids category is required for KID/KIDS plans');
       }
-      if (req.body.plan_for === 'ADULTS' && value) {
-        throw new Error('Subcategory should not be provided for ADULTS plans');
+      if (req.body.plan_for === 'ADULT' && value) {
+        throw new Error('Kids category should not be provided for ADULT plans');
       }
       return true;
     }),
@@ -190,7 +205,7 @@ const validatePagination = [
     .withMessage('is_active filter must be a boolean value'),
   query('plan_for')
     .optional()
-    .isIn(['KIDS', 'ADULT'])
+    .isIn(['KID', 'KIDS', 'ADULT'])
     .withMessage('Invalid plan_for filter'),
   query('kids_category')
     .optional()
