@@ -21,6 +21,31 @@ const membershipPlanSchema = new Schema(
             ref: 'classtype',
             required: true
         },
+        media: [
+            {
+                type: ObjectId,
+                ref: "media",
+                required: false,
+            }
+        ],
+        batches: [{
+            start_time: {
+                type: Date,
+                required: true
+            },
+            end_time: {
+                type: Date,
+                required: true
+            },
+            capacity: {
+                type: Number,
+                required: false
+            },
+            is_active: {
+                type: Boolean,
+                default: true
+            }
+        }],
         paymentResult: {
             status: String,
           },
