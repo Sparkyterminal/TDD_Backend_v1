@@ -122,29 +122,33 @@ exports.createWorkshop = async (req, res) => {
   
 
 exports.getWorkshop = async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!isValidObjectId(id)) {
-            return res.status(400).json({ error: 'Invalid workshop ID' });
-        }
+  try {
+    const { id } = req.params;
 
-        const workshop = await Workshop.findById(id)
-            .populate({
-              // path: 'instructor_user_ids',
-              select: 'first_name last_name email_data phone_data role is_active is_archived media',
-              populate: { path: 'media' }
-            })
-            // .populate('media');
-
-        if (!workshop) {
-            return res.status(404).json({ error: 'Workshop not found' });
-        }
-
-        return res.json(workshop);
-    } catch (err) {
-        console.error('Get workshop error:', err);
-        return res.status(500).json({ error: 'Server error' });
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid workshop ID' });
     }
+
+    const workshop = await Workshop.findById(id)
+      // Uncomment and enable if instructor_user_ids field is used
+      /*
+      .populate({
+        path: 'instructor_user_ids',
+        select: 'first_name last_name email_data phone_data role is_active is_archived',
+        populate: { path: 'media' }
+      })
+      */
+      .populate('media'); // Populate media references
+
+    if (!workshop) {
+      return res.status(404).json({ error: 'Workshop not found' });
+    }
+
+    return res.json(workshop);
+  } catch (err) {
+    console.error('Get workshop error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
 
 exports.getWorkshops = async (req, res) => {
@@ -169,49 +173,39 @@ exports.getWorkshops = async (req, res) => {
 };
 
 exports.updateWorkshop = async (req, res) => {
-    try {
-      const { id } = req.params;
-      if (!isValidObjectId(id)) {
-        return res.status(400).json({ error: 'Invalid workshop ID' });
-      }
-  
-      const updateData = { ...req.body };
-  
-      if (updateData.date && isNaN(Date.parse(updateData.date))) {
-        return res.status(400).json({ error: 'Invalid date format' });
-      }
-      if (updateData.start_time && isNaN(Date.parse(updateData.start_time))) {
-        return res.status(400).json({ error: 'Invalid start_time format' });
-      }
-      if (updateData.end_time && isNaN(Date.parse(updateData.end_time))) {
-        return res.status(400).json({ error: 'Invalid end_time format' });
-      }
-  
-      // Convert to Date objects without renaming fields
-      if (updateData.start_time) {
-        updateData.start_time = new Date(updateData.start_time);
-      }
-      if (updateData.end_time) {
-        updateData.end_time = new Date(updateData.end_time);
-      }
-      if (updateData.date) {
-        updateData.date = new Date(updateData.date);
-      }
-  
-      const updatedWorkshop = await Workshop.findByIdAndUpdate(id, updateData, {
-        new: true,
-        runValidators: true
-      });
-  
-      if (!updatedWorkshop) {
-        return res.status(404).json({ error: 'Workshop not found' });
-      }
-  
-      return res.json(updatedWorkshop);
-    } catch (err) {
-      console.error('Update workshop error:', err);
-      return res.status(500).json({ error: 'Server error' });
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid workshop ID' });
     }
+
+    const updateData = { ...req.body };
+
+    // Validate and convert date fields at top-level only
+    if (updateData.date && isNaN(Date.parse(updateData.date))) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+    if (updateData.date) {
+      updateData.date = new Date(updateData.date);
+    }
+
+    // Note: start_time and end_time are batch fields; handle batch updates separately
+
+    const updatedWorkshop = await Workshop.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true
+    });
+
+    if (!updatedWorkshop) {
+      return res.status(404).json({ error: 'Workshop not found' });
+    }
+
+    return res.json(updatedWorkshop);
+  } catch (err) {
+    console.error('Update workshop error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
   
 
