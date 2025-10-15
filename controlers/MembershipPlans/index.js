@@ -729,8 +729,9 @@ exports.createBooking = async (req, res) => {
       const price = plan.prices?.[billing_interval];
       if (price === undefined || price < 0)
         return res.status(400).json({ error: `Invalid price for ${billing_interval}` });
-      const priceInPaise = Math.round(price * 100) ;
-    const totalPrice = priceInPaise +500
+    const totalprice = price +500
+      const priceInPaise = Math.round(totalprice * 100) ;
+    
       // Create booking, store batchId
       const booking = await MembershipBooking.create({
         plan: plan._id,
@@ -749,7 +750,7 @@ exports.createBooking = async (req, res) => {
   
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
-        .amount(totalPrice)
+        .amount(priceInPaise)
         .redirectUrl(redirectUrl)
         .build();
   
