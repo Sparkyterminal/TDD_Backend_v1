@@ -787,93 +787,78 @@ exports.createBooking = async (req, res) => {
 exports.checkMembershipStatus = async (req, res) => {
     console.log('checkMembershipStatus invoked with query:', req.query);
     try {
-        const { merchantOrderId } = req.query;
-        if (!merchantOrderId) {
-            return res.status(400).send('merchantOrderId is required');
+      const { merchantOrderId } = req.query;
+      if (!merchantOrderId) {
+        return res.status(400).send('merchantOrderId is required');
+      }
+  
+      const response = await client.getOrderStatus(merchantOrderId);
+      const status = response.state;
+  
+      const booking = await MembershipBooking.findById(merchantOrderId);
+      if (!booking) {
+        return res.status(404).send('Booking not found');
+      }
+  
+      if (status === 'COMPLETED') {
+        // Create or find user
+        let user = await User.findOne({ 'email_data.email_id': booking.email });
+        if (!user) {
+          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+          const lastName = rest.join(' ');
+          const password = `${firstName || 'User'}@123`;
+          const hashedPassword = await bcrypt.hash(password, 10);
+  
+          user = await User.create({
+            first_name: firstName || 'User',
+            last_name: lastName || '',
+            media: [],
+            email_data: { temp_email_id: booking.email, is_validated: true },
+            phone_data: { phone_number: booking.mobile_number, is_validated: true },
+            role: 'USER',
+            password: hashedPassword,
+            is_active: true,
+            is_archived: false
+          });
         }
-
-        const response = await client.getOrderStatus(merchantOrderId);
-        const status = response.state;
-
-        const booking = await MembershipBooking.findById(merchantOrderId);
-        if (!booking) {
-            return res.status(404).send('Booking not found');
-        }
-
-        if (status === 'COMPLETED') {
-            // Create user if not exists
-            let user = await User.findOne({ 'email_data.email_id': booking.email });
-            if (!user) {
-                const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-                const lastName = rest.join(' ');
-                const password = `${firstName || 'User'}@123`;
-                const hashedPassword = await bcrypt.hash(password, 10);
-
-                user = await User.create({
-                    first_name: firstName || booking.name || 'User',
-                    last_name: lastName || '',
-                    media: [],
-                    email_data: { temp_email_id: booking.email, is_validated: true },
-                    phone_data: { phone_number: booking.mobile_number, is_validated: true },
-                    role: 'USER',
-                    password: hashedPassword,
-                    is_active: true,
-                    is_archived: false
-                });
+  
+        // Update booking with user info & payment status
+        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          user: user._id,
+          'paymentResult.status': 'COMPLETED',
+          'paymentResult.paymentDate': new Date(),
+          'paymentResult.phonepeResponse': response
+        });
+  
+        // Fetch plan without lean to allow modification
+        const plan = await MembershipPlan.findById(booking.plan);
+        if (plan && plan.batches && booking.batchId) {
+          plan.batches = plan.batches.map(batch => {
+            if (batch._id.toString() === booking.batchId.toString() && batch.capacity !== undefined && batch.capacity > 0) {
+              batch.capacity -= 1;
             }
-
-            // Update booking with user and payment success
-            await MembershipBooking.findByIdAndUpdate(
-                merchantOrderId,
-                {
-                    user: user._id,
-                    'paymentResult.status': 'COMPLETED',
-                    'paymentResult.paymentDate': new Date(),
-                    'paymentResult.phonepeResponse': response
-                }
-            );
-
-            // Decrement capacity of the booked batch
-            const plan = await MembershipPlan.findById(booking.plan);
-            console.log('plan', plan);
-            console.log('booking.batchId', booking );
-            // if (plan && plan.batches && booking.batchId) {
-            //     const batch = plan.batches.id(booking.batchId);
-            //     if (batch && batch.capacity !== undefined && batch.capacity > 0) {
-            //         batch.capacity -= 1;
-            //         await plan.save();
-            //     }
-            // }
-            if (plan && plan.batches ) {
-                // Map over batches to find and update the specific batch
-                plan.batches = plan.batches.map(batch => {
-                  if (batch._id.toString() === booking._id.toString() && batch.capacity !== undefined && batch.capacity > 0) {
-                    batch.capacity -= 1; // reduce capacity
-                  }
-                  return batch;
-                });
-                await plan.save(); // save the updated plan
-              }
-              
-              
-
-            return res.redirect(`http://localhost:5173/payment-success`);
+            return batch;
+          });
+          await plan.save();
+          console.log('Capacity decremented for batch:', booking.batchId);
         } else {
-            // Payment failed, update booking status
-            await MembershipBooking.findByIdAndUpdate(
-                merchantOrderId,
-                {
-                    'paymentResult.status': 'FAILED',
-                    'paymentResult.phonepeResponse': response
-                }
-            );
-            return res.redirect(`http://localhost:5173/payment-failure`);
+          console.log('Plan or batchId missing, capacity not decremented');
         }
+  
+        return res.redirect(`http://localhost:5173/payment-success`);
+      } else {
+        // Payment failed
+        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          'paymentResult.status': 'FAILED',
+          'paymentResult.phonepeResponse': response
+        });
+        return res.redirect(`http://localhost:5173/payment-failure`);
+      }
     } catch (err) {
-        console.error('Check membership status error:', err);
-        return res.status(500).send('Internal server error during payment status check');
+      console.error('Error during payment status check:', err);
+      return res.status(500).send('Internal server error during payment status check');
     }
-};
+  }
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
