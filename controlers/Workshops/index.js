@@ -239,7 +239,7 @@ exports.cancelWorkshop = async (req, res) => {
 exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, batchIds, name, age, email, mobile_number, gender } = req.body;
-
+    console.log('req.body', req.body);
     // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -311,7 +311,6 @@ exports.bookWorkshop = async (req, res) => {
       totalPrice += price;
       pricingDetails.push({ batch_id: b._id, pricing_tier: tier, price });
     }
-    console.log('pricingDetails', pricingDetails);
     const booking = new Booking({
       workshop: workshopId,
       batch_ids: batchIds,
