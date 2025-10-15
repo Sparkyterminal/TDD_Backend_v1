@@ -539,85 +539,85 @@ exports.deletePlan = async (req, res) => {
     }
 };
 
-exports.createBooking = async (req, res) => {
-    try {
-        const { planId, name, age, email, mobile_number, gender, paymentResult } = req.body;
+// exports.createBooking = async (req, res) => {
+//     try {
+//         const { planId, name, age, email, mobile_number, gender, paymentResult } = req.body;
 
-        // Validate planId
-        if (!isValidObjectId(planId)) {
-            return res.status(400).json({ error: 'Invalid planId' });
-        }
+//         // Validate planId
+//         if (!isValidObjectId(planId)) {
+//             return res.status(400).json({ error: 'Invalid planId' });
+//         }
 
-        // Validate personal details
-        if (!name || typeof name !== 'string') {
-            return res.status(400).json({ error: 'Valid name is required' });
-        }
-        if (age === undefined || typeof age !== 'number' || age < 0) {
-            return res.status(400).json({ error: 'Valid age is required' });
-        }
-        if (!email || typeof email !== 'string') {
-            return res.status(400).json({ error: 'Valid email is required' });
-        }
-        if (!mobile_number || typeof mobile_number !== 'string') {
-            return res.status(400).json({ error: 'Valid mobile_number is required' });
-        }
-        const allowedGenders = ['Male', 'Female', 'Other'];
-        if (!gender || !allowedGenders.includes(gender)) {
-            return res.status(400).json({ error: 'Valid gender is required' });
-        }
+//         // Validate personal details
+//         if (!name || typeof name !== 'string') {
+//             return res.status(400).json({ error: 'Valid name is required' });
+//         }
+//         if (age === undefined || typeof age !== 'number' || age < 0) {
+//             return res.status(400).json({ error: 'Valid age is required' });
+//         }
+//         if (!email || typeof email !== 'string') {
+//             return res.status(400).json({ error: 'Valid email is required' });
+//         }
+//         if (!mobile_number || typeof mobile_number !== 'string') {
+//             return res.status(400).json({ error: 'Valid mobile_number is required' });
+//         }
+//         const allowedGenders = ['Male', 'Female', 'Other'];
+//         if (!gender || !allowedGenders.includes(gender)) {
+//             return res.status(400).json({ error: 'Valid gender is required' });
+//         }
 
-        // Fetch the plan and check if active
-        const plan = await MembershipPlan.findById(planId).lean();
-        if (!plan || plan.is_active === false) {
-            return res.status(404).json({ error: 'Membership plan not found or inactive' });
-        }
+//         // Fetch the plan and check if active
+//         const plan = await MembershipPlan.findById(planId).lean();
+//         if (!plan || plan.is_active === false) {
+//             return res.status(404).json({ error: 'Membership plan not found or inactive' });
+//         }
 
-        // Determine price - you may want to specify which price plan to choose (e.g., monthly)
-        // Here, defaulting to monthly price
-        const price = plan.prices?.monthly;
-        if (price === undefined || price < 0) {
-            return res.status(400).json({ error: 'Invalid price on membership plan' });
-        }
+//         // Determine price - you may want to specify which price plan to choose (e.g., monthly)
+//         // Here, defaulting to monthly price
+//         const price = plan.prices?.monthly;
+//         if (price === undefined || price < 0) {
+//             return res.status(400).json({ error: 'Invalid price on membership plan' });
+//         }
 
-        // Create booking before payment is completed
-        const booking = await MembershipBooking.create({
-            plan: plan._id,
-            name,
-            age,
-            email,
-            mobile_number,
-            gender,
-            paymentResult: paymentResult || { status: 'initiated' }
-        });
+//         // Create booking before payment is completed
+//         const booking = await MembershipBooking.create({
+//             plan: plan._id,
+//             name,
+//             age,
+//             email,
+//             mobile_number,
+//             gender,
+//             paymentResult: paymentResult || { status: 'initiated' }
+//         });
 
-        const merchantOrderId = booking._id.toString();
+//         const merchantOrderId = booking._id.toString();
 
-        // Update your redirect URL to your deployment or frontend endpoint as needed
-        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+//         // Update your redirect URL to your deployment or frontend endpoint as needed
+//         const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
 
-        // Convert price to smallest currency unit (e.g., paise)
-        const priceInPaise = Math.round(price * 100);
+//         // Convert price to smallest currency unit (e.g., paise)
+//         const priceInPaise = Math.round(price * 100);
 
-        // Build payment request
-        const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
-            .merchantOrderId(merchantOrderId)
-            .amount(priceInPaise)
-            .redirectUrl(redirectUrl)
-            .build();
+//         // Build payment request
+//         const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//             .merchantOrderId(merchantOrderId)
+//             .amount(priceInPaise)
+//             .redirectUrl(redirectUrl)
+//             .build();
 
-        // Trigger payment SDK request
-        const paymentResponse = await client.pay(paymentRequest);
+//         // Trigger payment SDK request
+//         const paymentResponse = await client.pay(paymentRequest);
 
-        return res.status(201).json({
-            message: 'Membership booking initiated. Please complete payment.',
-            booking,
-            checkoutPageUrl: paymentResponse.redirectUrl
-        });
-    } catch (err) {
-        console.error('Create membership booking error:', err);
-        return res.status(500).json({ error: 'Server error' });
-    }
-};
+//         return res.status(201).json({
+//             message: 'Membership booking initiated. Please complete payment.',
+//             booking,
+//             checkoutPageUrl: paymentResponse.redirectUrl
+//         });
+//     } catch (err) {
+//         console.error('Create membership booking error:', err);
+//         return res.status(500).json({ error: 'Server error' });
+//     }
+// };
 
 // exports.createBooking = async (req, res) => {
 //     try {
@@ -682,6 +682,101 @@ exports.createBooking = async (req, res) => {
 //     }
 // };
 
+exports.createBooking = async (req, res) => {
+    try {
+        const {
+            planId,
+            batchIndex,          // index of batch user selected
+            name,
+            age,
+            email,
+            mobile_number,
+            gender,
+            paymentResult
+        } = req.body;
+
+        // Validate required fields
+        if (!isValidObjectId(planId)) {
+            return res.status(400).json({ error: 'Invalid planId' });
+        }
+        if (batchIndex === undefined || typeof batchIndex !== 'number') {
+            return res.status(400).json({ error: 'batchIndex is required and must be a number' });
+        }
+        if (!name || typeof name !== 'string') {
+            return res.status(400).json({ error: 'Valid name is required' });
+        }
+        if (age === undefined || typeof age !== 'number' || age < 0) {
+            return res.status(400).json({ error: 'Valid age is required' });
+        }
+        if (!email || typeof email !== 'string') {
+            return res.status(400).json({ error: 'Valid email is required' });
+        }
+        if (!mobile_number || typeof mobile_number !== 'string') {
+            return res.status(400).json({ error: 'Valid mobile_number is required' });
+        }
+        const allowedGenders = ['Male', 'Female', 'Other'];
+        if (!gender || !allowedGenders.includes(gender)) {
+            return res.status(400).json({ error: 'Valid gender is required' });
+        }
+
+        // Fetch the membership plan by id
+        const plan = await MembershipPlan.findById(planId);
+        if (!plan || plan.is_active === false) {
+            return res.status(404).json({ error: 'Membership plan not found or inactive' });
+        }
+        if (!plan.batches || plan.batches.length <= batchIndex) {
+            return res.status(400).json({ error: 'Invalid batch selected' });
+        }
+
+        const batch = plan.batches[batchIndex];
+        if (batch.capacity !== undefined && batch.capacity <= 0) {
+            return res.status(400).json({ error: 'Selected batch is full' });
+        }
+
+        // Use monthly price as the payment amount (customize as needed)
+        const price = plan.prices?.monthly;
+        if (price === undefined || price < 0) {
+            return res.status(400).json({ error: 'Invalid price on membership plan' });
+        }
+        const priceInPaise = Math.round(price * 100);
+
+        // Create the booking record with batchIndex included
+        const booking = await MembershipBooking.create({
+            plan: plan._id,
+            batchIndex,
+            name,
+            age,
+            email,
+            mobile_number,
+            gender,
+            paymentResult: paymentResult || { status: 'initiated' }
+        });
+
+        const merchantOrderId = booking._id.toString();
+        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+
+        // Build payment request using your payment SDK here
+        const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+            .merchantOrderId(merchantOrderId)
+            .amount(priceInPaise)
+            .redirectUrl(redirectUrl)
+            .build();
+
+        const paymentResponse = await client.pay(paymentRequest);
+
+        return res.status(201).json({
+            message: 'Membership booking initiated. Please complete payment.',
+            booking,
+            checkoutPageUrl: paymentResponse.redirectUrl
+        });
+    } catch (err) {
+        console.error('Create membership booking error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};
+
+
+// Check payment status, handle payment success/failure, user creation, and capacity decrement
 exports.checkMembershipStatus = async (req, res) => {
     console.log('checkMembershipStatus invoked with query:', req.query);
     try {
@@ -699,7 +794,7 @@ exports.checkMembershipStatus = async (req, res) => {
         }
 
         if (status === 'COMPLETED') {
-            // Create user if not exists
+            // Create user if does not exist
             let user = await User.findOne({ 'email_data.email_id': booking.email });
             if (!user) {
                 const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
@@ -720,7 +815,7 @@ exports.checkMembershipStatus = async (req, res) => {
                 });
             }
 
-            // Update booking to associate user and mark payment completed
+            // Update booking with user and payment completed info
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -731,11 +826,16 @@ exports.checkMembershipStatus = async (req, res) => {
                 }
             );
 
-            // Decrement capacity for the booked batch
+            // Decrement capacity on selected batch
             const plan = await MembershipPlan.findById(booking.plan);
-            if (plan && plan.batches && booking.batchIndex !== undefined && plan.batches.length > booking.batchIndex) {
+            if (
+                plan &&
+                plan.batches &&
+                typeof booking.batchIndex === 'number' &&
+                plan.batches.length > booking.batchIndex
+            ) {
                 const batch = plan.batches[booking.batchIndex];
-                if (batch.capacity !== undefined && batch.capacity > 0) {
+                if (batch && batch.capacity !== undefined && batch.capacity > 0) {
                     batch.capacity -= 1;
                     await plan.save();
                 }
@@ -743,7 +843,7 @@ exports.checkMembershipStatus = async (req, res) => {
 
             return res.redirect(`http://localhost:5173/payment-success`);
         } else {
-            // Payment failed, update booking status
+            // Payment failed, update booking payment status
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -757,7 +857,7 @@ exports.checkMembershipStatus = async (req, res) => {
         console.error('Check membership status error:', err);
         return res.status(500).send('Internal server error during payment status check');
     }
-}
+};
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
