@@ -349,6 +349,7 @@ exports.bookWorkshop = async (req, res) => {
 exports.getStatusOfPayment = async (req, res) => {
   try {
     const { merchantOrderId } = req.query;
+
     if (!merchantOrderId) {
       return res.status(400).send("merchantOrderId is required");
     }
@@ -368,31 +369,36 @@ exports.getStatusOfPayment = async (req, res) => {
       if (!workshopDoc || workshopDoc.is_cancelled || !workshopDoc.is_active) {
         capacityOk = false;
       } else {
-        const batchIds = booking.batch_ids && booking.batch_ids.length ? booking.batch_ids : [booking.batch_id].filter(Boolean);
+        const batchIds = booking.batch_ids && booking.batch_ids.length 
+          ? booking.batch_ids 
+          : [booking.batch_id].filter(Boolean);
 
         for (const bId of batchIds) {
           const bIdObj = new mongoose.Types.ObjectId(bId);
-          const batch = workshopDoc.batches?.find(b => b._id.toString() === bIdObj.toString());
+          const batch = workshopDoc.batches?.find(
+            b => b._id.toString() === bIdObj.toString()
+          );
+
           if (!batch || batch.is_cancelled) {
             capacityOk = false;
             break;
           }
 
           if (typeof batch.capacity === 'number') {
-            // Update batch capacity and early_bird capacity_limit atomically
+            // Use different aliases in arrayFilters
             const updated = await Workshop.findOneAndUpdate(
               { _id: booking.workshop },
               {
                 $inc: {
-                  'batches.$[elem].capacity': -1,
-                  'batches.$[elem].pricing.early_bird.capacity_limit': -1
+                  'batches.$[batchCapacity].capacity': -1,
+                  'batches.$[batchEarlyBird].pricing.early_bird.capacity_limit': -1
                 }
               },
               {
                 new: true,
                 arrayFilters: [
-                  { 'elem._id': bIdObj, 'elem.capacity': { $gt: 0 } },
-                  { 'elem._id': bIdObj, 'elem.pricing.early_bird.capacity_limit': { $gt: 0 } }
+                  { 'batchCapacity._id': bIdObj, 'batchCapacity.capacity': { $gt: 0 } },
+                  { 'batchEarlyBird._id': bIdObj, 'batchEarlyBird.pricing.early_bird.capacity_limit': { $gt: 0 } }
                 ]
               }
             );
@@ -436,7 +442,7 @@ exports.getStatusOfPayment = async (req, res) => {
           'paymentResult.phonepeResponse': response,
           status: 'FAILED'
         }
-      );Gcnaveen30
+      );
 
       return res.redirect(`http://localhost:5173/payment-failure`);
     }
