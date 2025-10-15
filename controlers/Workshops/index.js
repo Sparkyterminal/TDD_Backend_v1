@@ -184,22 +184,25 @@ exports.getWorkshop = async (req, res) => {
     }
 };
 
-exports.getWorkshops = async (req, res) => {
-    try {
-        // Optionally add filters, pagination here
-        const workshops = await Workshop.find()
-            .populate({
-                // path: 'instructor_user_ids',
-                select: 'first_name last_name email_data phone_data role is_active is_archived media',
-                populate: { path: 'media' }
-            })
-            // .populate('media')
-            .sort({ start_at: 1 });
-        return res.json(workshops);
-    } catch (err) {
-        console.error('Get workshops error:', err);
-        return res.status(500).json({ error: 'Server error' });
-    }
+eexports.getWorkshops = async (req, res) => {
+  try {
+    const workshops = await Workshop.find()
+      // Uncomment and enable if you add instructor_user_ids field in schema
+      /*
+      .populate({
+        path: 'instructor_user_ids',
+        select: 'first_name last_name email_data phone_data role is_active is_archived',
+        populate: { path: 'media' }
+      })
+      */
+      .populate('media') // Populate media references
+      .sort({ date: 1 }); // Sort by workshop date ascending
+
+    return res.json(workshops);
+  } catch (err) {
+    console.error('Get workshops error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
 
 exports.updateWorkshop = async (req, res) => {
