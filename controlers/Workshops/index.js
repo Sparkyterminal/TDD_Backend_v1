@@ -450,7 +450,7 @@ exports.bookWorkshop = async (req, res) => {
 
     // Prepare payment
     const merchantOrderId = booking._id.toString();
-    console.log('Booking saved with ID:', booking._id);
+    console.log('Booking saved with ID:', merchantOrderId);
 
     const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
     const priceInPaise = Math.round(totalPrice * 100);
