@@ -9,7 +9,6 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const env = Env.SANDBOX
-const { Types } = require('mongoose');
 
 const client = new StandardCheckoutClient(clientId, clientSecret, env)
 
@@ -687,8 +686,8 @@ exports.createBooking = async (req, res) => {
     try {
         const {
             planId,
-            batch_id,             // batch ObjectId string referring to a specific batch
-            billing_interval,     // 'monthly', 'quarterly', 'half_yearly', 'yearly'
+            batch_id,              // batch ObjectId referring to a specific batch
+            billing_interval,      // 'monthly', 'quarterly', 'half_yearly', 'yearly'
             name,
             age,
             email,
@@ -725,13 +724,14 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ error: 'Valid gender is required' });
         }
 
-        // Find the membership plan and validate batch existence
+        // Find the plan including batches to check batch_id matches
         const plan = await MembershipPlan.findById(planId);
         if (!plan || plan.is_active === false) {
             return res.status(404).json({ error: 'Membership plan not found or inactive' });
         }
 
-        // Find batch by string id, Mongoose will handle conversion internally
+        // Find batch by batch_id (must be stored as _id in batches)
+        // If each batch doesn't have _id by default, add it in schema (Mongoose creates _id by default in sub-documents)
         const batch = plan.batches.id(batch_id);
         if (!batch) {
             return res.status(400).json({ error: 'Batch not found in the selected membership plan' });
@@ -740,17 +740,17 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ error: 'Selected batch is full' });
         }
 
-        // Get plan price according to billing interval
+        // Get the price based on billing_interval dynamically
         const price = plan.prices?.[billing_interval];
         if (price === undefined || price < 0) {
             return res.status(400).json({ error: `Invalid price for billing interval: ${billing_interval}` });
         }
         const priceInPaise = Math.round(price * 100);
 
-        // Create the membership booking storing batchId and billing_interval
+        // Create the booking with batch_id and billing_interval info
         const booking = await MembershipBooking.create({
             plan: plan._id,
-            batchId: batch._id,
+            batchId: batch._id,           // store batch ObjectId
             billing_interval,
             name,
             age,
@@ -763,6 +763,7 @@ exports.createBooking = async (req, res) => {
         const merchantOrderId = booking._id.toString();
         const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
 
+        // Build payment request (adjust according to your payment SDK)
         const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
             .merchantOrderId(merchantOrderId)
             .amount(priceInPaise)
@@ -776,15 +777,13 @@ exports.createBooking = async (req, res) => {
             booking,
             checkoutPageUrl: paymentResponse.redirectUrl
         });
-
     } catch (err) {
         console.error('Create membership booking error:', err);
         return res.status(500).json({ error: 'Server error' });
     }
 };
 
-
-// Check payment status, update booking, user, and decrement batch capacity
+// Check payment status and update booking, user, and batch capacity
 exports.checkMembershipStatus = async (req, res) => {
     console.log('checkMembershipStatus invoked with query:', req.query);
     try {
@@ -802,7 +801,7 @@ exports.checkMembershipStatus = async (req, res) => {
         }
 
         if (status === 'COMPLETED') {
-            // Create or find user
+            // Create user if not exists
             let user = await User.findOne({ 'email_data.email_id': booking.email });
             if (!user) {
                 const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
@@ -823,7 +822,7 @@ exports.checkMembershipStatus = async (req, res) => {
                 });
             }
 
-            // Mark payment completed and link to user
+            // Update booking with user and payment success
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -836,26 +835,31 @@ exports.checkMembershipStatus = async (req, res) => {
 
             // Decrement capacity of the booked batch
             const plan = await MembershipPlan.findById(booking.plan);
-            if (
-                plan &&
-                plan.batches &&
-                booking.batchId
-            ) {
-                const batch = plan.batches.id(booking.batchId);
-                if (batch && batch.capacity !== undefined && batch.capacity > 0) {
-                    batch.capacity -= 1;
-                    await plan.save();
-                    console.log('Capacity decremented:', batch.capacity);
-                } else {
-                    console.log('Batch capacity not decremented: batch not found or capacity 0');
-                }
-            } else {
-                console.log('Plan, batches or booking.batchId missing for capacity decrement');
-            }
+            console.log('plan', plan);
+            console.log('booking.batchId', booking.batchId);
+            // if (plan && plan.batches && booking.batchId) {
+            //     const batch = plan.batches.id(booking.batchId);
+            //     if (batch && batch.capacity !== undefined && batch.capacity > 0) {
+            //         batch.capacity -= 1;
+            //         await plan.save();
+            //     }
+            // }
+            if (plan && plan.batches && booking.batchId) {
+                // Map over batches to find and update the specific batch
+                plan.batches = plan.batches.map(batch => {
+                  if (batch._id.toString() === booking.batchId.toString() && batch.capacity !== undefined && batch.capacity > 0) {
+                    batch.capacity -= 1; // reduce capacity
+                  }
+                  return batch;
+                });
+                await plan.save(); // save the updated plan
+              }
+              
+              
 
             return res.redirect(`http://localhost:5173/payment-success`);
         } else {
-            // Payment failed
+            // Payment failed, update booking status
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -869,7 +873,7 @@ exports.checkMembershipStatus = async (req, res) => {
         console.error('Check membership status error:', err);
         return res.status(500).send('Internal server error during payment status check');
     }
-}
+};
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
