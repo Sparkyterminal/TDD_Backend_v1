@@ -539,15 +539,16 @@ exports.deletePlan = async (req, res) => {
     }
 };
 
-
-
 exports.createBooking = async (req, res) => {
     try {
         const { planId, name, age, email, mobile_number, gender, paymentResult } = req.body;
 
+        // Validate planId
         if (!isValidObjectId(planId)) {
             return res.status(400).json({ error: 'Invalid planId' });
         }
+
+        // Validate personal details
         if (!name || typeof name !== 'string') {
             return res.status(400).json({ error: 'Valid name is required' });
         }
@@ -565,12 +566,20 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ error: 'Valid gender is required' });
         }
 
+        // Fetch the plan and check if active
         const plan = await MembershipPlan.findById(planId).lean();
         if (!plan || plan.is_active === false) {
             return res.status(404).json({ error: 'Membership plan not found or inactive' });
         }
 
-        // Create booking before payment (no user yet)
+        // Determine price - you may want to specify which price plan to choose (e.g., monthly)
+        // Here, defaulting to monthly price
+        const price = plan.prices?.monthly;
+        if (price === undefined || price < 0) {
+            return res.status(400).json({ error: 'Invalid price on membership plan' });
+        }
+
+        // Create booking before payment is completed
         const booking = await MembershipBooking.create({
             plan: plan._id,
             name,
@@ -582,15 +591,21 @@ exports.createBooking = async (req, res) => {
         });
 
         const merchantOrderId = booking._id.toString();
-        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-        const priceInPaise = Math.round((plan.price || 0) * 100);
 
+        // Update your redirect URL to your deployment or frontend endpoint as needed
+        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+
+        // Convert price to smallest currency unit (e.g., paise)
+        const priceInPaise = Math.round(price * 100);
+
+        // Build payment request
         const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
             .merchantOrderId(merchantOrderId)
             .amount(priceInPaise)
             .redirectUrl(redirectUrl)
             .build();
 
+        // Trigger payment SDK request
         const paymentResponse = await client.pay(paymentRequest);
 
         return res.status(201).json({
@@ -603,6 +618,69 @@ exports.createBooking = async (req, res) => {
         return res.status(500).json({ error: 'Server error' });
     }
 };
+
+// exports.createBooking = async (req, res) => {
+//     try {
+//         const { planId, name, age, email, mobile_number, gender, paymentResult } = req.body;
+
+//         if (!isValidObjectId(planId)) {
+//             return res.status(400).json({ error: 'Invalid planId' });
+//         }
+//         if (!name || typeof name !== 'string') {
+//             return res.status(400).json({ error: 'Valid name is required' });
+//         }
+//         if (age === undefined || typeof age !== 'number' || age < 0) {
+//             return res.status(400).json({ error: 'Valid age is required' });
+//         }
+//         if (!email || typeof email !== 'string') {
+//             return res.status(400).json({ error: 'Valid email is required' });
+//         }
+//         if (!mobile_number || typeof mobile_number !== 'string') {
+//             return res.status(400).json({ error: 'Valid mobile_number is required' });
+//         }
+//         const allowedGenders = ['Male', 'Female', 'Other'];
+//         if (!gender || !allowedGenders.includes(gender)) {
+//             return res.status(400).json({ error: 'Valid gender is required' });
+//         }
+
+//         const plan = await MembershipPlan.findById(planId).lean();
+//         if (!plan || plan.is_active === false) {
+//             return res.status(404).json({ error: 'Membership plan not found or inactive' });
+//         }
+
+//         // Create booking before payment (no user yet)
+//         const booking = await MembershipBooking.create({
+//             plan: plan._id,
+//             name,
+//             age,
+//             email,
+//             mobile_number,
+//             gender,
+//             paymentResult: paymentResult || { status: 'initiated' }
+//         });
+
+//         const merchantOrderId = booking._id.toString();
+//         const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+//         const priceInPaise = Math.round((plan.price || 0) * 100);
+
+//         const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//             .merchantOrderId(merchantOrderId)
+//             .amount(priceInPaise)
+//             .redirectUrl(redirectUrl)
+//             .build();
+
+//         const paymentResponse = await client.pay(paymentRequest);
+
+//         return res.status(201).json({
+//             message: 'Membership booking initiated. Please complete payment.',
+//             booking,
+//             checkoutPageUrl: paymentResponse.redirectUrl
+//         });
+//     } catch (err) {
+//         console.error('Create membership booking error:', err);
+//         return res.status(500).json({ error: 'Server error' });
+//     }
+// };
 
 exports.checkMembershipStatus = async (req, res) => {
     console.log('checkMembershipStatus invoked with query:', req.query);
