@@ -354,23 +354,27 @@ exports.getStatusOfPayment = async (req, res) => {
       return res.status(400).send("merchantOrderId is required");
     }
 
+    // Get payment status from payment client
     const response = await client.getOrderStatus(merchantOrderId);
     const status = response.state;
 
     if (status === 'COMPLETED') {
+      // Fetch corresponding booking
       const booking = await Booking.findById(merchantOrderId).lean();
       if (!booking) {
         return res.status(404).send("Booking submission not found");
       }
 
       let capacityOk = true;
+
+      // Fetch Workshop for capacity and batch verification
       const workshopDoc = await Workshop.findById(booking.workshop).lean();
 
       if (!workshopDoc || workshopDoc.is_cancelled || !workshopDoc.is_active) {
         capacityOk = false;
       } else {
-        const batchIds = booking.batch_ids && booking.batch_ids.length 
-          ? booking.batch_ids 
+        const batchIds = booking.batch_ids && booking.batch_ids.length
+          ? booking.batch_ids
           : [booking.batch_id].filter(Boolean);
 
         for (const bId of batchIds) {
@@ -379,13 +383,14 @@ exports.getStatusOfPayment = async (req, res) => {
             b => b._id.toString() === bIdObj.toString()
           );
 
+          // Validate batch existence and status
           if (!batch || batch.is_cancelled) {
             capacityOk = false;
             break;
           }
 
+          // Atomically update batch capacities if possible
           if (typeof batch.capacity === 'number') {
-            // Use different aliases in arrayFilters
             const updated = await Workshop.findOneAndUpdate(
               { _id: booking.workshop },
               {
@@ -402,7 +407,6 @@ exports.getStatusOfPayment = async (req, res) => {
                 ]
               }
             );
-
             if (!updated) {
               capacityOk = false;
               break;
@@ -411,6 +415,7 @@ exports.getStatusOfPayment = async (req, res) => {
         }
       }
 
+      // If capacity update failed for any batch, mark booking payment as FAILED
       if (!capacityOk) {
         await Booking.findByIdAndUpdate(
           merchantOrderId,
@@ -423,6 +428,7 @@ exports.getStatusOfPayment = async (req, res) => {
         return res.redirect(`http://localhost:5173/payment-failure`);
       }
 
+      // Mark booking as CONFIRMED with payment details
       await Booking.findByIdAndUpdate(
         merchantOrderId,
         {
@@ -435,6 +441,7 @@ exports.getStatusOfPayment = async (req, res) => {
 
       return res.redirect(`http://localhost:5173/payment-success`);
     } else {
+      // Payment not completed - mark FAILED
       await Booking.findByIdAndUpdate(
         merchantOrderId,
         {
@@ -450,7 +457,7 @@ exports.getStatusOfPayment = async (req, res) => {
     console.error('Error while checking payment status:', error);
     return res.status(500).send('Internal server error during payment status check');
   }
-}
+};
 
 
 // exports.getStatusOfPayment = async (req, res) => {
