@@ -345,6 +345,7 @@ exports.bookWorkshop = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 exports.getStatusOfPayment = async (req, res) => {
   try {
     const { merchantOrderId } = req.query;
@@ -378,24 +379,22 @@ exports.getStatusOfPayment = async (req, res) => {
           }
 
           if (typeof batch.capacity === 'number') {
-            // Update batch capacity and early_bird capacity_limit atomically
             const updated = await Workshop.findOneAndUpdate(
               { _id: booking.workshop },
               {
                 $inc: {
-                  'batches.$[elem].capacity': -1,
-                  'batches.$[elem].pricing.early_bird.capacity_limit': -1
+                  'batches.$[elem1].capacity': -1,
+                  'batches.$[elem2].pricing.early_bird.capacity_limit': -1
                 }
               },
               {
                 new: true,
                 arrayFilters: [
-                  { 'elem._id': bIdObj, 'elem.capacity': { $gt: 0 } },
-                  { 'elem._id': bIdObj, 'elem.pricing.early_bird.capacity_limit': { $gt: 0 } }
+                  { 'elem1._id': bIdObj, 'elem1.capacity': { $gt: 0 } },
+                  { 'elem2._id': bIdObj, 'elem2.pricing.early_bird.capacity_limit': { $gt: 0 } }
                 ]
               }
             );
-
             if (!updated) {
               capacityOk = false;
               break;
@@ -443,7 +442,7 @@ exports.getStatusOfPayment = async (req, res) => {
     console.error('Error while checking payment status:', error);
     return res.status(500).send('Internal server error during payment status check');
   }
-}
+};
 
 
 // exports.getStatusOfPayment = async (req, res) => {
