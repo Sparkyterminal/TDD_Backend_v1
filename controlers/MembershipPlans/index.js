@@ -844,10 +844,10 @@ exports.checkMembershipStatus = async (req, res) => {
             //         await plan.save();
             //     }
             // }
-            if (plan && plan.batches && booking.batchId) {
+            if (plan && plan.batches ) {
                 // Map over batches to find and update the specific batch
                 plan.batches = plan.batches.map(batch => {
-                  if (batch._id.toString() === booking.batchId.toString() && batch.capacity !== undefined && batch.capacity > 0) {
+                  if (batch._id.toString() === booking._id.toString() && batch.capacity !== undefined && batch.capacity > 0) {
                     batch.capacity -= 1; // reduce capacity
                   }
                   return batch;
