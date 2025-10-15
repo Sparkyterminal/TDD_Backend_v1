@@ -749,7 +749,7 @@ exports.createBooking = async (req, res) => {
   
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
-        .amount(priceInPaise)
+        .amount(priceInPaise + 500)
         .redirectUrl(redirectUrl)
         .build();
   
