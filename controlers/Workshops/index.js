@@ -12,122 +12,84 @@ function isValidObjectId(id) {
 }
 
 exports.createWorkshop = async (req, res) => {
-    try {
-      let {
-        title,
-        description,
-        // instructor_user_ids,
-        // instructor,
-        // name,
-        // media,
-        // image,             
-        date,
-        tags,
-        is_cancelled,
-        is_active,
-        batches
-      } = req.body;
-  
-      // Use image as media array if media not provided
-      // if (!media && image) {
-      //   media = [image];
-      // }
-  
-      // Use instructor string as single-element array if instructor_user_ids not provided
-      // if (!instructor_user_ids && instructor) {
-      //   instructor_user_ids = [instructor];
-      // }
-      // if (!name) {
-      //   return res.status(400).json({ error: 'name is required' });
-      // }
-  
-      // Validate required fields
-      if (!title || !date) {
-        return res.status(400).json({ error: 'Missing required fields: title, date' });
-      }
+  try {
+    let {
+      title,
+      description,
+      media,
+      date,
+      tags,
+      is_cancelled,
+      is_active,
+      batches
+    } = req.body;
 
-      // Validate batches
-      if (!batches || !Array.isArray(batches) || batches.length === 0) {
-        return res.status(400).json({ error: 'batches array is required with at least one batch' });
-      }
+    if (!title || !date) {
+      return res.status(400).json({ error: 'Missing required fields: title, date' });
+    }
 
-      // Validate each batch
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        if (!batch.start_time || !batch.end_time) {
-          return res.status(400).json({ error: `Batch ${i + 1} missing start_time or end_time` });
-        }
-        if (isNaN(Date.parse(batch.start_time)) || isNaN(Date.parse(batch.end_time))) {
-          return res.status(400).json({ error: `Batch ${i + 1} has invalid time format` });
-        }
-        if (new Date(batch.end_time) <= new Date(batch.start_time)) {
-          return res.status(400).json({ error: `Batch ${i + 1} end_time must be after start_time` });
-        }
+    if (!batches || !Array.isArray(batches) || batches.length === 0) {
+      return res.status(400).json({ error: 'batches array is required with at least one batch' });
+    }
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      if (!batch.start_time || !batch.end_time) {
+        return res.status(400).json({ error: `Batch ${i + 1} missing start_time or end_time` });
       }
-  
-      // Validate date and times
-      if (isNaN(Date.parse(date))) {
-        return res.status(400).json({ error: 'Invalid date format' });
+      if (isNaN(Date.parse(batch.start_time)) || isNaN(Date.parse(batch.end_time))) {
+        return res.status(400).json({ error: `Batch ${i + 1} has invalid time format` });
       }
-      // No legacy start/end time validation; batches are required
-  
-      // Validate instructor_user_ids and media as arrays if present
-      // if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
-      //   return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
-      // }
-      // if (image && !Array.isArray(image)) {
-      //   return res.status(400).json({ error: 'image must be an array of IDs' });
-      // }
-      // if (media && !Array.isArray(media)) {
-      //   return res.status(400).json({ error: 'media must be an array of IDs' });
-      // }
-  
-      // Normalize batch pricing numbers
-      batches = batches.map((batch) => {
-        const normalized = { ...batch };
-        if (normalized.pricing) {
-          const pb = normalized.pricing;
-          if (pb.early_bird) {
-            if (typeof pb.early_bird.price === 'string') {
-              const v = parseFloat(pb.early_bird.price);
-              pb.early_bird.price = isNaN(v) ? undefined : v;
-            }
-            if (typeof pb.early_bird.capacity_limit === 'string') {
-              const c = parseInt(pb.early_bird.capacity_limit, 10);
-              pb.early_bird.capacity_limit = isNaN(c) ? undefined : c;
-            }
+      if (new Date(batch.end_time) <= new Date(batch.start_time)) {
+        return res.status(400).json({ error: `Batch ${i + 1} end_time must be after start_time` });
+      }
+    }
+
+    if (isNaN(Date.parse(date))) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+
+    // Normalize pricing and capacity numbers
+    batches = batches.map(batch => {
+      const normalized = { ...batch };
+      if (normalized.pricing) {
+        const pb = normalized.pricing;
+        if (pb.early_bird) {
+          if (typeof pb.early_bird.price === 'string') {
+            const v = parseFloat(pb.early_bird.price);
+            pb.early_bird.price = isNaN(v) ? undefined : v;
           }
-          if (pb.regular && typeof pb.regular.price === 'string') {
-            const v = parseFloat(pb.regular.price);
-            pb.regular.price = isNaN(v) ? undefined : v;
-          }
-          if (pb.on_the_spot && typeof pb.on_the_spot.price === 'string') {
-            const v = parseFloat(pb.on_the_spot.price);
-            pb.on_the_spot.price = isNaN(v) ? undefined : v;
+          if (typeof pb.early_bird.capacity_limit === 'string') {
+            const c = parseInt(pb.early_bird.capacity_limit, 10);
+            pb.early_bird.capacity_limit = isNaN(c) ? undefined : c;
           }
         }
-        if (typeof normalized.capacity === 'string') {
-          const c = parseInt(normalized.capacity, 10);
-          normalized.capacity = isNaN(c) ? undefined : c;
+        if (pb.regular && typeof pb.regular.price === 'string') {
+          const v = parseFloat(pb.regular.price);
+          pb.regular.price = isNaN(v) ? undefined : v;
         }
-        return normalized;
-      });
-  
-      // Prepare workshop data
-      const workshopData = {
-        title,
-        description,
-        // instructor_user_ids,
-        // name,
-        // media,
-        date: new Date(date),
-        tags,
-        is_cancelled: is_cancelled ?? false,
-        is_active: is_active ?? true
-      };
+        if (pb.on_the_spot && typeof pb.on_the_spot.price === 'string') {
+          const v = parseFloat(pb.on_the_spot.price);
+          pb.on_the_spot.price = isNaN(v) ? undefined : v;
+        }
+      }
+      if (typeof normalized.capacity === 'string') {
+        const c = parseInt(normalized.capacity, 10);
+        normalized.capacity = isNaN(c) ? undefined : c;
+      }
+      return normalized;
+    });
 
-      // Process batches
-      workshopData.batches = batches.map(batch => ({
+    const workshopData = {
+      media,
+      title,
+      description,
+      date: new Date(date),
+      tags,
+      is_cancelled: is_cancelled ?? false,
+      is_active: is_active ?? true,
+      batches: batches.map(batch => ({
+        name: batch.name, // Added name here
         start_time: new Date(batch.start_time),
         end_time: new Date(batch.end_time),
         capacity: batch.capacity,
@@ -144,18 +106,19 @@ exports.createWorkshop = async (req, res) => {
           }
         },
         is_cancelled: batch.is_cancelled ?? false
-      }));
+      }))
+    };
 
-      const workshop = new Workshop(workshopData);
-  
-      await workshop.save();
-      return res.status(201).json(workshop);
-  
-    } catch (err) {
-      console.error('Create workshop error:', err);
-      return res.status(500).json({ error: 'Server error' });
-    }
-  };
+    const workshop = new Workshop(workshopData);
+    await workshop.save();
+
+    return res.status(201).json(workshop);
+
+  } catch (err) {
+    console.error('Create workshop error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
   
 
 exports.getWorkshop = async (req, res) => {
