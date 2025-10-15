@@ -837,13 +837,31 @@ exports.checkMembershipStatus = async (req, res) => {
             const plan = await MembershipPlan.findById(booking.plan);
             console.log('plan', plan);
             console.log('booking.batchId', booking.batchId);
-            if (plan && plan.batches && booking.batchId) {
-                const batch = plan.batches.id(booking.batchId);
-                if (batch && batch.capacity !== undefined && batch.capacity > 0) {
-                    batch.capacity -= 1;
-                    await plan.save();
-                }
-            }
+            // if (plan && plan.batches && booking.batchId) {
+            //     const batch = plan.batches.id(booking.batchId);
+            //     if (batch && batch.capacity !== undefined && batch.capacity > 0) {
+            //         batch.capacity -= 1;
+            //         await plan.save();
+            //     }
+            // }
+            const { Types } = require('mongoose');
+
+if (plan && plan.batches && booking.batchId) {
+  const batchId = typeof booking.batchId === 'string' ? Types.ObjectId(booking.batchId) : booking.batchId;
+  const batch = plan.batches.id(batchId);
+  console.log('Batch found for capacity decrement:', batch);
+  if (batch && batch.capacity !== undefined && batch.capacity > 0) {
+    batch.capacity -= 1;
+    await plan.save();
+    console.log(`Capacity decremented. New capacity: ${batch.capacity}`);
+  } else {
+    console.log('Batch capacity not found or already zero.');
+  }
+} else {
+  console.log('Plan or batches or booking.batchId missing for capacity decrement');
+}
+
+              
 
             return res.redirect(`http://localhost:5173/payment-success`);
         } else {
