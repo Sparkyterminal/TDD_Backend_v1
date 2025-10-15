@@ -40,20 +40,45 @@ const membershipPlanSchema = new Schema(
             ref: "media",
             required: false,
         },
+        // batches: [{
+        //     days: {
+        //         type: [String],
+        //         enum: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+        //         required: true
+        //     },
+        //     start_time: {
+        //         type: String,
+        //         required: true
+        //     },
+        //     end_time: {
+        //         type: String,
+        //         required: true
+        //     },
+        //     capacity: {
+        //         type: Number,
+        //         required: false
+        //     },
+        //     is_active: {
+        //         type: Boolean,
+        //         default: true
+        //     }
+        // }],
         batches: [{
-            days: {
-                type: [String],
-                enum: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
-                required: true
-            },
-            start_time: {
-                type: String,
-                required: true
-            },
-            end_time: {
-                type: String,
-                required: true
-            },
+            schedule: [{
+                day: {
+                    type: String,
+                    enum: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+                    required: true
+                },
+                start_time: {
+                    type: String,
+                    required: true
+                },
+                end_time: {
+                    type: String,
+                    required: true
+                }
+            }],
             capacity: {
                 type: Number,
                 required: false
@@ -63,6 +88,7 @@ const membershipPlanSchema = new Schema(
                 default: true
             }
         }],
+        
         plan_for: {
             type: String,
             enum: ['KID', 'KIDS', 'ADULT'],
