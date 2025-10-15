@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const env = Env.SANDBOX
+const { isValidObjectId, Types } = require('mongoose');
 
 const client = new StandardCheckoutClient(clientId, clientSecret, env)
 
@@ -684,182 +685,164 @@ exports.deletePlan = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
     try {
-        const {
-            planId,
-            batch_id,              // batch ObjectId referring to a specific batch
-            billing_interval,      // 'monthly', 'quarterly', 'half_yearly', 'yearly'
-            name,
-            age,
-            email,
-            mobile_number,
-            gender,
-            paymentResult
-        } = req.body;
-
-        // Validate required fields
-        if (!isValidObjectId(planId)) {
-            return res.status(400).json({ error: 'Invalid planId' });
-        }
-        if (!isValidObjectId(batch_id)) {
-            return res.status(400).json({ error: 'Invalid batch_id' });
-        }
-        const validIntervals = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
-        if (!billing_interval || !validIntervals.includes(billing_interval)) {
-            return res.status(400).json({ error: 'Invalid billing_interval' });
-        }
-        if (!name || typeof name !== 'string') {
-            return res.status(400).json({ error: 'Valid name is required' });
-        }
-        if (age === undefined || typeof age !== 'number' || age < 0) {
-            return res.status(400).json({ error: 'Valid age is required' });
-        }
-        if (!email || typeof email !== 'string') {
-            return res.status(400).json({ error: 'Valid email is required' });
-        }
-        if (!mobile_number || typeof mobile_number !== 'string') {
-            return res.status(400).json({ error: 'Valid mobile_number is required' });
-        }
-        const allowedGenders = ['Male', 'Female', 'Other'];
-        if (!gender || !allowedGenders.includes(gender)) {
-            return res.status(400).json({ error: 'Valid gender is required' });
-        }
-
-        // Find the plan including batches to check batch_id matches
-        const plan = await MembershipPlan.findById(planId);
-        if (!plan || plan.is_active === false) {
-            return res.status(404).json({ error: 'Membership plan not found or inactive' });
-        }
-
-        // Find batch by batch_id (must be stored as _id in batches)
-        // If each batch doesn't have _id by default, add it in schema (Mongoose creates _id by default in sub-documents)
-        const batch = plan.batches.id(batch_id);
-        if (!batch) {
-            return res.status(400).json({ error: 'Batch not found in the selected membership plan' });
-        }
-        if (batch.capacity !== undefined && batch.capacity <= 0) {
-            return res.status(400).json({ error: 'Selected batch is full' });
-        }
-
-        // Get the price based on billing_interval dynamically
-        const price = plan.prices?.[billing_interval];
-        if (price === undefined || price < 0) {
-            return res.status(400).json({ error: `Invalid price for billing interval: ${billing_interval}` });
-        }
-        const priceInPaise = Math.round(price * 100);
-
-        // Create the booking with batch_id and billing_interval info
-        const booking = await MembershipBooking.create({
-            plan: plan._id,
-            batchId: batch._id,           // store batch ObjectId
-            billing_interval,
-            name,
-            age,
-            email,
-            mobile_number,
-            gender,
-            paymentResult: paymentResult || { status: 'initiated' }
-        });
-
-        const merchantOrderId = booking._id.toString();
-        const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-
-        // Build payment request (adjust according to your payment SDK)
-        const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
-            .merchantOrderId(merchantOrderId)
-            .amount(priceInPaise)
-            .redirectUrl(redirectUrl)
-            .build();
-
-        const paymentResponse = await client.pay(paymentRequest);
-
-        return res.status(201).json({
-            message: 'Membership booking initiated. Please complete payment.',
-            booking,
-            checkoutPageUrl: paymentResponse.redirectUrl
-        });
+      const {
+        planId,
+        batch_id, // should be ObjectId string
+        billing_interval,
+        name,
+        age,
+        email,
+        mobile_number,
+        gender,
+        paymentResult
+      } = req.body;
+  
+      // Validate
+      if (!isValidObjectId(planId))
+        return res.status(400).json({ error: 'Invalid planId' });
+      if (!isValidObjectId(batch_id))
+        return res.status(400).json({ error: 'Invalid batch_id' });
+      const validIntervals = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
+      if (!billing_interval || !validIntervals.includes(billing_interval))
+        return res.status(400).json({ error: 'Invalid billing_interval' });
+      if (!name || typeof name !== 'string')
+        return res.status(400).json({ error: 'Valid name is required' });
+      if (typeof age !== 'number' || age < 0)
+        return res.status(400).json({ error: 'Valid age is required' });
+      if (!email || typeof email !== 'string')
+        return res.status(400).json({ error: 'Valid email is required' });
+      if (!mobile_number || typeof mobile_number !== 'string')
+        return res.status(400).json({ error: 'Valid mobile_number is required' });
+      const allowedGenders = ['Male', 'Female', 'Other'];
+      if (!gender || !allowedGenders.includes(gender))
+        return res.status(400).json({ error: 'Valid gender is required' });
+  
+      const plan = await MembershipPlan.findById(planId);
+      if (!plan || !plan.is_active)
+        return res.status(404).json({ error: 'Plan not found or inactive' });
+      const batch = plan.batches.id(batch_id);
+      if (!batch)
+        return res.status(400).json({ error: 'Batch not found in plan' });
+      if (batch.capacity !== undefined && batch.capacity <= 0)
+        return res.status(400).json({ error: 'Batch full' });
+  
+      const price = plan.prices?.[billing_interval];
+      if (price === undefined || price < 0)
+        return res.status(400).json({ error: `Invalid price for ${billing_interval}` });
+      const priceInPaise = Math.round(price * 100);
+  
+      // Create booking, store batchId
+      const booking = await MembershipBooking.create({
+        plan: plan._id,
+        batchId: batch._id, // important!
+        billing_interval,
+        name,
+        age,
+        email,
+        mobile_number,
+        gender,
+        paymentResult: paymentResult || { status: 'initiated' }
+      });
+  
+      const merchantOrderId = booking._id.toString();
+      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+  
+      const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+        .merchantOrderId(merchantOrderId)
+        .amount(priceInPaise)
+        .redirectUrl(redirectUrl)
+        .build();
+  
+      const paymentResponse = await client.pay(paymentRequest);
+      res.status(201).json({
+        message: 'Booking initiated, complete payment.',
+        booking,
+        checkoutPageUrl: paymentResponse.redirectUrl
+      });
     } catch (err) {
-        console.error('Create membership booking error:', err);
-        return res.status(500).json({ error: 'Server error' });
+      console.error('createBooking:', err);
+      res.status(500).json({ error: 'Server error' });
     }
-};
+  };
 
 // Check payment status and update booking, user, and batch capacity
+
 exports.checkMembershipStatus = async (req, res) => {
-    console.log('checkMembershipStatus invoked with query:', req.query);
-    try {
-      const { merchantOrderId } = req.query;
-      if (!merchantOrderId) {
-        return res.status(400).send('merchantOrderId is required');
-      }
-  
-      const response = await client.getOrderStatus(merchantOrderId);
-      const status = response.state;
-  
-      const booking = await MembershipBooking.findById(merchantOrderId);
-      if (!booking) {
-        return res.status(404).send('Booking not found');
-      }
-  
-      if (status === 'COMPLETED') {
-        // Create or find user
-        let user = await User.findOne({ 'email_data.email_id': booking.email });
-        if (!user) {
-          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-          const lastName = rest.join(' ');
-          const password = `${firstName || 'User'}@123`;
-          const hashedPassword = await bcrypt.hash(password, 10);
-  
-          user = await User.create({
-            first_name: firstName || 'User',
-            last_name: lastName || '',
-            media: [],
-            email_data: { temp_email_id: booking.email, is_validated: true },
-            phone_data: { phone_number: booking.mobile_number, is_validated: true },
-            role: 'USER',
-            password: hashedPassword,
-            is_active: true,
-            is_archived: false
-          });
-        }
-  
-        // Update booking with user info & payment status
-        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-          user: user._id,
-          'paymentResult.status': 'COMPLETED',
-          'paymentResult.paymentDate': new Date(),
-          'paymentResult.phonepeResponse': response
+  console.log('checkMembershipStatus invoked with query:', req.query);
+  try {
+    const { merchantOrderId } = req.query;
+    if (!merchantOrderId)
+      return res.status(400).send('merchantOrderId is required');
+
+    const response = await client.getOrderStatus(merchantOrderId);
+    const status = response.state;
+
+    const booking = await MembershipBooking.findById(merchantOrderId);
+    if (!booking)
+      return res.status(404).send('Booking not found');
+
+    if (status === 'COMPLETED') {
+      // User management
+      let user = await User.findOne({ 'email_data.email_id': booking.email });
+      if (!user) {
+        const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+        const lastName = rest.join(' ');
+        const password = `${firstName || 'User'}@123`;
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        user = await User.create({
+          first_name: firstName || 'User',
+          last_name: lastName || '',
+          media: [],
+          email_data: { temp_email_id: booking.email, is_validated: true },
+          phone_data: { phone_number: booking.mobile_number, is_validated: true },
+          role: 'USER',
+          password: hashedPassword,
+          is_active: true,
+          is_archived: false
         });
-        console.log('booking.batchId', booking);
-  
-        // Fetch plan without lean to allow modification
-        const plan = await MembershipPlan.findById(booking.plan);
-        if (plan && plan.batches && booking.batchId) {
-          plan.batches = plan.batches.map(batch => {
-            if (batch._id.toString() === booking.batchId.toString() && batch.capacity !== undefined && batch.capacity > 0) {
-              batch.capacity -= 1;
-            }
-            return batch;
-          });
-          await plan.save();
-          console.log('Capacity decremented for batch:', booking.batchId);
-        } else {
-          console.log('Plan or batchId missing, capacity not decremented');
-        }
-  
-        return res.redirect(`http://localhost:5173/payment-success`);
+      }
+
+      // Mark booking paid
+      await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+        user: user._id,
+        'paymentResult.status': 'COMPLETED',
+        'paymentResult.paymentDate': new Date(),
+        'paymentResult.phonepeResponse': response
+      });
+
+      // Decrement capacity for the booked batch
+      const plan = await mongoose.model('membershipplan').findById(booking.plan);
+      if (plan && plan.batches && booking.batchId) {
+        plan.batches = plan.batches.map(batch => {
+          if (
+            batch._id.toString() === booking.batchId.toString() &&
+            batch.capacity !== undefined &&
+            batch.capacity > 0
+          ) {
+            batch.capacity -= 1;
+          }
+          return batch;
+        });
+        await plan.save();
       } else {
-        // Payment failed
-        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-          'paymentResult.status': 'FAILED',
-          'paymentResult.phonepeResponse': response
-        });
-        return res.redirect(`http://localhost:5173/payment-failure`);
+        console.log('Missing plan or batchId, capacity not decremented');
       }
-    } catch (err) {
-      console.error('Error during payment status check:', err);
-      return res.status(500).send('Internal server error during payment status check');
+
+      return res.redirect('http://localhost:5173/payment-success');
+    } else {
+      // Payment failure
+      await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
+        'paymentResult.status': 'FAILED',
+        'paymentResult.phonepeResponse': response
+      });
+      return res.redirect('http://localhost:5173/payment-failure');
     }
+  } catch (err) {
+    console.error('checkMembershipStatus:', err);
+    res.status(500).send('Internal server error');
   }
+};
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
