@@ -836,7 +836,7 @@ exports.checkMembershipStatus = async (req, res) => {
             // Decrement capacity of the booked batch
             const plan = await MembershipPlan.findById(booking.plan);
             console.log('plan', plan);
-            console.log('booking.batchId', booking);
+            console.log('booking.batchId', booking );
             // if (plan && plan.batches && booking.batchId) {
             //     const batch = plan.batches.id(booking.batchId);
             //     if (batch && batch.capacity !== undefined && batch.capacity > 0) {
