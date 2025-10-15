@@ -314,6 +314,110 @@ exports.getPlanById = async (req, res) => {
     }
 };
 
+// exports.updatePlan = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         if (!isValidObjectId(id)) {
+//             return res.status(400).json({ error: 'Invalid plan ID' });
+//         }
+
+//         const allowed = ['name', 'description', 'prices', 'benefits', 'is_active', 'plan_for', 'kids_category', 'dance_type', 'image', 'batches'];
+//         const updateData = pick(req.body, allowed);
+
+//         if (updateData.prices !== undefined) {
+//             if (typeof updateData.prices !== 'object') {
+//                 return res.status(400).json({ error: 'Invalid prices object' });
+//             }
+//             if (updateData.prices.monthly !== undefined && (typeof updateData.prices.monthly !== 'number' || updateData.prices.monthly < 0)) {
+//                 return res.status(400).json({ error: 'Valid monthly price is required' });
+//             }
+//             const optionalPrices = ['quarterly', 'half_yearly', 'yearly'];
+//             for (const priceType of optionalPrices) {
+//                 if (updateData.prices[priceType] !== undefined && (typeof updateData.prices[priceType] !== 'number' || updateData.prices[priceType] < 0)) {
+//                     return res.status(400).json({ error: `Valid ${priceType} price is required` });
+//                 }
+//             }
+//         }
+//         if (updateData.benefits !== undefined && !Array.isArray(updateData.benefits)) {
+//             return res.status(400).json({ error: 'benefits must be an array' });
+//         }
+//         if (updateData.plan_for !== undefined) {
+//             const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
+//             if (!allowedAudiences.includes(updateData.plan_for)) {
+//                 return res.status(400).json({ error: 'Invalid plan_for' });
+//             }
+//         }
+//         if ((updateData.plan_for === 'KID' || updateData.plan_for === 'KIDS') && (!updateData.kids_category || !['JUNIOR', 'ADVANCED'].includes(updateData.kids_category))) {
+//             return res.status(400).json({ error: 'Kids category is required for KID/KIDS plans and must be JUNIOR or ADVANCED' });
+//         }
+//         if (updateData.plan_for === 'ADULT' && updateData.kids_category) {
+//             return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });
+//         }
+//         if (updateData.dance_type !== undefined) {
+//             if (!isValidObjectId(updateData.dance_type)) {
+//                 return res.status(400).json({ error: 'Invalid dance_type ID' });
+//             }
+//         }
+//         if (updateData.image !== undefined) {
+//             if (updateData.image && !isValidObjectId(updateData.image)) {
+//                 return res.status(400).json({ error: 'Invalid image ID' });
+//             }
+//         }
+//         if (updateData.batches !== undefined) {
+//             if (!Array.isArray(updateData.batches)) {
+//                 return res.status(400).json({ error: 'batches must be an array' });
+//             }
+//             for (const batch of updateData.batches) {
+//                 if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
+//                     return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+//                 }
+//                 const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+//                 for (const day of batch.days) {
+//                     if (!validDays.includes(day)) {
+//                         return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+//                     }
+//                 }
+//                 if (!batch.start_time || !batch.end_time) {
+//                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
+//                 }
+//                 // Validate time format (HH:MM)
+//                 const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+//                 if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
+//                     return res.status(400).json({ error: 'Time must be in HH:MM format' });
+//                 }
+//                 if (batch.start_time >= batch.end_time) {
+//                     return res.status(400).json({ error: 'Batch start_time must be before end_time' });
+//                 }
+//                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
+//                     return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
+//                 }
+//             }
+//         }
+
+//         const updateDoc = { ...updateData };
+//         if (updateData.dance_type !== undefined) {
+//             const classType = await ClassType.findById(updateData.dance_type).lean();
+//             if (!classType) {
+//                 return res.status(404).json({ error: 'Dance type not found' });
+//             }
+//         }
+
+//         const updated = await MembershipPlan.findByIdAndUpdate(
+//             id,
+//             updateDoc,
+//             { new: true, runValidators: true }
+//         ).populate('dance_type').populate('image');
+//         if (!updated) {
+//             return res.status(404).json({ error: 'Membership plan not found' });
+//         }
+//         return res.json(updated);
+//     } catch (err) {
+//         console.error('Update membership plan error:', err);
+//         return res.status(500).json({ error: 'Server error' });
+//     }
+// };
+
+
 exports.updatePlan = async (req, res) => {
     try {
         const { id } = req.params;
@@ -322,7 +426,12 @@ exports.updatePlan = async (req, res) => {
         }
 
         const allowed = ['name', 'description', 'prices', 'benefits', 'is_active', 'plan_for', 'kids_category', 'dance_type', 'image', 'batches'];
-        const updateData = pick(req.body, allowed);
+        const updateData = {};
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) {
+                updateData[key] = req.body[key];
+            }
+        }
 
         if (updateData.prices !== undefined) {
             if (typeof updateData.prices !== 'object') {
@@ -357,6 +466,10 @@ exports.updatePlan = async (req, res) => {
             if (!isValidObjectId(updateData.dance_type)) {
                 return res.status(400).json({ error: 'Invalid dance_type ID' });
             }
+            const classType = await ClassType.findById(updateData.dance_type).lean();
+            if (!classType) {
+                return res.status(404).json({ error: 'Dance type not found' });
+            }
         }
         if (updateData.image !== undefined) {
             if (updateData.image && !isValidObjectId(updateData.image)) {
@@ -367,26 +480,25 @@ exports.updatePlan = async (req, res) => {
             if (!Array.isArray(updateData.batches)) {
                 return res.status(400).json({ error: 'batches must be an array' });
             }
+            const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+            const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
             for (const batch of updateData.batches) {
-                if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
-                    return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+                if (!batch.schedule || !Array.isArray(batch.schedule) || batch.schedule.length === 0) {
+                    return res.status(400).json({ error: 'Each batch must have a schedule array with at least one day/time entry' });
                 }
-                const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-                for (const day of batch.days) {
-                    if (!validDays.includes(day)) {
-                        return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+                for (const sched of batch.schedule) {
+                    if (!sched.day || !validDays.includes(sched.day)) {
+                        return res.status(400).json({ error: `Invalid day: ${sched.day}` });
                     }
-                }
-                if (!batch.start_time || !batch.end_time) {
-                    return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
-                }
-                // Validate time format (HH:MM)
-                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
-                    return res.status(400).json({ error: 'Time must be in HH:MM format' });
-                }
-                if (batch.start_time >= batch.end_time) {
-                    return res.status(400).json({ error: 'Batch start_time must be before end_time' });
+                    if (!sched.start_time || !sched.end_time) {
+                        return res.status(400).json({ error: 'Each schedule entry must have start_time and end_time' });
+                    }
+                    if (!timeRegex.test(sched.start_time) || !timeRegex.test(sched.end_time)) {
+                        return res.status(400).json({ error: 'Time must be in HH:MM format' });
+                    }
+                    if (sched.start_time >= sched.end_time) {
+                        return res.status(400).json({ error: 'Schedule start_time must be before end_time' });
+                    }
                 }
                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
                     return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
@@ -394,17 +506,9 @@ exports.updatePlan = async (req, res) => {
             }
         }
 
-        const updateDoc = { ...updateData };
-        if (updateData.dance_type !== undefined) {
-            const classType = await ClassType.findById(updateData.dance_type).lean();
-            if (!classType) {
-                return res.status(404).json({ error: 'Dance type not found' });
-            }
-        }
-
         const updated = await MembershipPlan.findByIdAndUpdate(
             id,
-            updateDoc,
+            updateData,
             { new: true, runValidators: true }
         ).populate('dance_type').populate('image');
         if (!updated) {
