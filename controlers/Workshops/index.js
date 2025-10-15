@@ -18,7 +18,7 @@ exports.createWorkshop = async (req, res) => {
         description,
         // instructor_user_ids,
         // instructor,
-        name,
+        // name,
         // media,
         // image,             
         date,
@@ -37,9 +37,9 @@ exports.createWorkshop = async (req, res) => {
       // if (!instructor_user_ids && instructor) {
       //   instructor_user_ids = [instructor];
       // }
-      if (!name) {
-        return res.status(400).json({ error: 'name is required' });
-      }
+      // if (!name) {
+      //   return res.status(400).json({ error: 'name is required' });
+      // }
   
       // Validate required fields
       if (!title || !date) {
@@ -118,7 +118,7 @@ exports.createWorkshop = async (req, res) => {
         title,
         description,
         // instructor_user_ids,
-        name,
+        // name,
         // media,
         date: new Date(date),
         tags,
