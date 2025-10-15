@@ -16,8 +16,9 @@ exports.createWorkshop = async (req, res) => {
       let {
         title,
         description,
-        instructor_user_ids,
-        instructor,
+        // instructor_user_ids,
+        // instructor,
+        name,
         // media,
         // image,             
         date,
@@ -33,8 +34,11 @@ exports.createWorkshop = async (req, res) => {
       // }
   
       // Use instructor string as single-element array if instructor_user_ids not provided
-      if (!instructor_user_ids && instructor) {
-        instructor_user_ids = [instructor];
+      // if (!instructor_user_ids && instructor) {
+      //   instructor_user_ids = [instructor];
+      // }
+      if (!name) {
+        return res.status(400).json({ error: 'name is required' });
       }
   
       // Validate required fields
@@ -68,9 +72,9 @@ exports.createWorkshop = async (req, res) => {
       // No legacy start/end time validation; batches are required
   
       // Validate instructor_user_ids and media as arrays if present
-      if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
-        return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
-      }
+      // if (instructor_user_ids && !Array.isArray(instructor_user_ids)) {
+      //   return res.status(400).json({ error: 'instructor_user_ids must be an array of IDs' });
+      // }
       // if (image && !Array.isArray(image)) {
       //   return res.status(400).json({ error: 'image must be an array of IDs' });
       // }
@@ -113,7 +117,8 @@ exports.createWorkshop = async (req, res) => {
       const workshopData = {
         title,
         description,
-        instructor_user_ids,
+        // instructor_user_ids,
+        name,
         // media,
         date: new Date(date),
         tags,
@@ -162,7 +167,7 @@ exports.getWorkshop = async (req, res) => {
 
         const workshop = await Workshop.findById(id)
             .populate({
-              path: 'instructor_user_ids',
+              // path: 'instructor_user_ids',
               select: 'first_name last_name email_data phone_data role is_active is_archived media',
               populate: { path: 'media' }
             })
@@ -184,7 +189,7 @@ exports.getWorkshops = async (req, res) => {
         // Optionally add filters, pagination here
         const workshops = await Workshop.find()
             .populate({
-                path: 'instructor_user_ids',
+                // path: 'instructor_user_ids',
                 select: 'first_name last_name email_data phone_data role is_active is_archived media',
                 populate: { path: 'media' }
             })

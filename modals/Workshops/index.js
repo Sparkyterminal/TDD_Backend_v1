@@ -12,11 +12,11 @@ const workshopSchema = new Schema(
             type: String,
             required: false
         },
-        instructor_user_ids: {
-            type: [ObjectId],
-            ref: 'user',
-            default: []
-        },
+        // instructor_user_ids: {
+        //     type: [ObjectId],
+        //     ref: 'user',
+        //     default: []
+        // },
         media: [
             {
             type: ObjectId,
@@ -44,6 +44,10 @@ const workshopSchema = new Schema(
             end_time: {
                 type: Date,
                 required: true
+            },
+            name: {
+                type: String,
+                required: false
             },
             capacity: {
                 type: Number,
@@ -95,6 +99,7 @@ const workshopSchema = new Schema(
             type: Boolean,
             default: false
         },
+        
         is_active: {
             type: Boolean,
             default: true
