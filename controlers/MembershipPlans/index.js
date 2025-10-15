@@ -26,9 +26,110 @@ function pick(obj, allowed) {
     return out;
 }
 
+// exports.createPlan = async (req, res) => {
+//     try {
+//         const { name, description, dance_type, prices, benefits, is_active, plan_for, kids_category, image, batches } = req.body;
+//         if (!dance_type || !isValidObjectId(dance_type)) {
+//             return res.status(400).json({ error: 'Valid dance_type is required' });
+//         }
+//         const classType = await ClassType.findById(dance_type).lean();
+//         if (!classType) {
+//             return res.status(404).json({ error: 'Dance type not found' });
+//         }
+
+//         if (!name || typeof name !== 'string') {
+//             return res.status(400).json({ error: 'Valid name is required' });
+//         }
+//         if (!prices || typeof prices !== 'object') {
+//             return res.status(400).json({ error: 'Valid prices object is required' });
+//         }
+//         if (prices.monthly === undefined || typeof prices.monthly !== 'number' || prices.monthly < 0) {
+//             return res.status(400).json({ error: 'Valid monthly price is required' });
+//         }
+//         // Validate other prices if provided
+//         const optionalPrices = ['quarterly', 'half_yearly', 'yearly'];
+//         for (const priceType of optionalPrices) {
+//             if (prices[priceType] !== undefined && (typeof prices[priceType] !== 'number' || prices[priceType] < 0)) {
+//                 return res.status(400).json({ error: `Valid ${priceType} price is required` });
+//             }
+//         }
+//         if (benefits && !Array.isArray(benefits)) {
+//             return res.status(400).json({ error: 'benefits must be an array of strings' });
+//         }
+//         if (image && !isValidObjectId(image)) {
+//             return res.status(400).json({ error: 'Invalid image ID' });
+//         }
+//         if (batches && !Array.isArray(batches)) {
+//             return res.status(400).json({ error: 'batches must be an array' });
+//         }
+//         if (batches && batches.length > 0) {
+//             for (const batch of batches) {
+//                 if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
+//                     return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+//                 }
+//                 const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+//                 for (const day of batch.days) {
+//                     if (!validDays.includes(day)) {
+//                         return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+//                     }
+//                 }
+//                 if (!batch.start_time || !batch.end_time) {
+//                     return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
+//                 }
+//                 // Validate time format (HH:MM)
+//                 const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+//                 if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
+//                     return res.status(400).json({ error: 'Time must be in HH:MM format' });
+//                 }
+//                 if (batch.start_time >= batch.end_time) {
+//                     return res.status(400).json({ error: 'Batch start_time must be before end_time' });
+//                 }
+//                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
+//                     return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
+//                 }
+//             }
+//         }
+//         if (plan_for !== undefined) {
+//             const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
+//             if (!allowedAudiences.includes(plan_for)) {
+//                 return res.status(400).json({ error: 'Invalid plan_for' });
+//             }
+//         }
+//         if ((plan_for === 'KID' || plan_for === 'KIDS') && (!kids_category || !['JUNIOR', 'ADVANCED'].includes(kids_category))) {
+//             return res.status(400).json({ error: 'Kids category is required for KID/KIDS plans and must be JUNIOR or ADVANCED' });
+//         }
+//         if (plan_for === 'ADULT' && kids_category) {
+//             return res.status(400).json({ error: 'Kids category should not be provided for ADULT plans' });
+//         }
+
+//         const plan = await MembershipPlan.create({
+//             name,
+//             description,
+//             dance_type: classType._id,
+//             prices,
+//             benefits: benefits || [],
+//             plan_for: plan_for || 'ADULT',
+//             kids_category: (plan_for === 'KID' || plan_for === 'KIDS') ? kids_category : undefined,
+//             is_active: is_active !== undefined ? !!is_active : true,
+//             image: image || undefined,
+//             batches: batches || []
+//         });
+
+//         return res.status(201).json(plan);
+//     } catch (err) {
+//         console.error('Create membership plan error:', err);
+//         return res.status(500).json({ error: 'Server error' });
+//     }
+// };
+
+
 exports.createPlan = async (req, res) => {
     try {
-        const { name, description, dance_type, prices, benefits, is_active, plan_for, kids_category, image, batches } = req.body;
+        const { 
+            name, description, dance_type, prices, benefits, is_active, 
+            plan_for, kids_category, image, batches 
+        } = req.body;
+
         if (!dance_type || !isValidObjectId(dance_type)) {
             return res.status(400).json({ error: 'Valid dance_type is required' });
         }
@@ -46,13 +147,13 @@ exports.createPlan = async (req, res) => {
         if (prices.monthly === undefined || typeof prices.monthly !== 'number' || prices.monthly < 0) {
             return res.status(400).json({ error: 'Valid monthly price is required' });
         }
-        // Validate other prices if provided
         const optionalPrices = ['quarterly', 'half_yearly', 'yearly'];
         for (const priceType of optionalPrices) {
             if (prices[priceType] !== undefined && (typeof prices[priceType] !== 'number' || prices[priceType] < 0)) {
                 return res.status(400).json({ error: `Valid ${priceType} price is required` });
             }
         }
+
         if (benefits && !Array.isArray(benefits)) {
             return res.status(400).json({ error: 'benefits must be an array of strings' });
         }
@@ -62,33 +163,37 @@ exports.createPlan = async (req, res) => {
         if (batches && !Array.isArray(batches)) {
             return res.status(400).json({ error: 'batches must be an array' });
         }
+
         if (batches && batches.length > 0) {
+            const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+            const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
             for (const batch of batches) {
-                if (!batch.days || !Array.isArray(batch.days) || batch.days.length === 0) {
-                    return res.status(400).json({ error: 'Each batch must have days array with at least one day' });
+                if (!batch.schedule || !Array.isArray(batch.schedule) || batch.schedule.length === 0) {
+                    return res.status(400).json({ error: 'Each batch must have a schedule array with at least one day-time entry' });
                 }
-                const validDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-                for (const day of batch.days) {
-                    if (!validDays.includes(day)) {
-                        return res.status(400).json({ error: `Invalid day: ${day}. Must be one of: ${validDays.join(', ')}` });
+
+                for (const sched of batch.schedule) {
+                    if (!sched.day || !validDays.includes(sched.day)) {
+                        return res.status(400).json({ error: `Invalid day in schedule: ${sched.day}` });
+                    }
+                    if (!sched.start_time || !sched.end_time) {
+                        return res.status(400).json({ error: 'Each schedule entry must have start_time and end_time' });
+                    }
+                    if (!timeRegex.test(sched.start_time) || !timeRegex.test(sched.end_time)) {
+                        return res.status(400).json({ error: 'Time must be in HH:MM format' });
+                    }
+                    if (sched.start_time >= sched.end_time) {
+                        return res.status(400).json({ error: 'Schedule start_time must be before end_time' });
                     }
                 }
-                if (!batch.start_time || !batch.end_time) {
-                    return res.status(400).json({ error: 'Each batch must have start_time and end_time' });
-                }
-                // Validate time format (HH:MM)
-                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                if (!timeRegex.test(batch.start_time) || !timeRegex.test(batch.end_time)) {
-                    return res.status(400).json({ error: 'Time must be in HH:MM format' });
-                }
-                if (batch.start_time >= batch.end_time) {
-                    return res.status(400).json({ error: 'Batch start_time must be before end_time' });
-                }
+
                 if (batch.capacity !== undefined && (typeof batch.capacity !== 'number' || batch.capacity < 0)) {
                     return res.status(400).json({ error: 'Batch capacity must be a non-negative number' });
                 }
             }
         }
+
         if (plan_for !== undefined) {
             const allowedAudiences = ['KID', 'KIDS', 'ADULT'];
             if (!allowedAudiences.includes(plan_for)) {
@@ -121,7 +226,6 @@ exports.createPlan = async (req, res) => {
         return res.status(500).json({ error: 'Server error' });
     }
 };
-
 exports.getPlans = async (req, res) => {
     try {
         const {
