@@ -687,7 +687,7 @@ exports.createBooking = async (req, res) => {
     try {
         const {
             planId,
-            batch_id,             // batch ObjectId referring to a specific batch
+            batch_id,             // batch ObjectId string referring to a specific batch
             billing_interval,     // 'monthly', 'quarterly', 'half_yearly', 'yearly'
             name,
             age,
@@ -731,7 +731,8 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ error: 'Membership plan not found or inactive' });
         }
 
-        const batch = plan.batches.id(Types.ObjectId(batch_id));
+        // Find batch by string id, Mongoose will handle conversion internally
+        const batch = plan.batches.id(batch_id);
         if (!batch) {
             return res.status(400).json({ error: 'Batch not found in the selected membership plan' });
         }
@@ -840,17 +841,16 @@ exports.checkMembershipStatus = async (req, res) => {
                 plan.batches &&
                 booking.batchId
             ) {
-                const batchId = typeof booking.batchId === 'string' ? Types.ObjectId(booking.batchId) : booking.batchId;
-                const batch = plan.batches.id(batchId);
+                const batch = plan.batches.id(booking.batchId);
                 if (batch && batch.capacity !== undefined && batch.capacity > 0) {
                     batch.capacity -= 1;
                     await plan.save();
                     console.log('Capacity decremented:', batch.capacity);
                 } else {
-                    console.log('Batch capacity not decremented: batch not found or capacity zero');
+                    console.log('Batch capacity not decremented: batch not found or capacity 0');
                 }
             } else {
-                console.log('Plan, batches, or booking.batchId missing for capacity decrement');
+                console.log('Plan, batches or booking.batchId missing for capacity decrement');
             }
 
             return res.redirect(`http://localhost:5173/payment-success`);
