@@ -22,6 +22,12 @@ const membershipBookingSchema = new Schema(
             ref: 'membershipplan',
             required: true
         },
+        batchId: {
+            type: ObjectId,
+            ref: 'membershipplan.batches',
+            required: true
+        },
+        
         // Snapshot critical plan data at booking time for historical accuracy
         name: {
             type: String,
