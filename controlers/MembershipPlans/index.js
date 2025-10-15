@@ -720,6 +720,7 @@ exports.checkMembershipStatus = async (req, res) => {
                 });
             }
 
+            // Update booking with user and payment success
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -729,8 +730,24 @@ exports.checkMembershipStatus = async (req, res) => {
                     'paymentResult.phonepeResponse': response
                 }
             );
+
+            // Decrement capacity of the booked batch if applicable
+            // Assuming booking has a field 'batchIndex' indicating which batch user booked
+            if (booking.batchIndex !== undefined) {
+                const membershipPlan = await MembershipPlan.findById(booking.plan);
+                if (membershipPlan && membershipPlan.batches && membershipPlan.batches.length > booking.batchIndex) {
+                    const batch = membershipPlan.batches[booking.batchIndex];
+                    // Only decrement if capacity is set and greater than zero
+                    if (batch.capacity !== undefined && batch.capacity > 0) {
+                        batch.capacity -= 1;
+                        await membershipPlan.save();
+                    }
+                }
+            }
+
             return res.redirect(`http://localhost:5173/payment-success`);
         } else {
+            // Update booking with payment failure
             await MembershipBooking.findByIdAndUpdate(
                 merchantOrderId,
                 {
@@ -745,6 +762,7 @@ exports.checkMembershipStatus = async (req, res) => {
         return res.status(500).send('Internal server error during payment status check');
     }
 };
+
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
