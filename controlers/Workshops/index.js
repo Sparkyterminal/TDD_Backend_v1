@@ -311,7 +311,7 @@ exports.bookWorkshop = async (req, res) => {
       totalPrice += price;
       pricingDetails.push({ batch_id: b._id, pricing_tier: tier, price });
     }
-
+    console.log('pricingDetails', pricingDetails);
     const booking = new Booking({
       workshop: workshopId,
       batch_ids: batchIds,
