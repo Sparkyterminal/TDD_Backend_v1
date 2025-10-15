@@ -184,7 +184,7 @@ exports.getWorkshop = async (req, res) => {
     }
 };
 
-eexports.getWorkshops = async (req, res) => {
+exports.getWorkshops = async (req, res) => {
   try {
     const workshops = await Workshop.find()
       // Uncomment and enable if you add instructor_user_ids field in schema
