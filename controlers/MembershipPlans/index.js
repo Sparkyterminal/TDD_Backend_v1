@@ -829,6 +829,7 @@ exports.checkMembershipStatus = async (req, res) => {
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response
         });
+        console.log('booking.batchId', booking);
   
         // Fetch plan without lean to allow modification
         const plan = await MembershipPlan.findById(booking.plan);
