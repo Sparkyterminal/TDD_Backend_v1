@@ -1092,6 +1092,42 @@ exports.renewMembership = async (req, res) => {
       return res.status(500).json({ error: 'Server error' });
     }
   };
+//   exports.getConfirmedMembershipBookings = async (req, res) => {
+//     try {
+//       const { planId, batchId } = req.params;
+  
+//       if (!isValidObjectId(planId)) {
+//         return res.status(400).json({ error: 'Invalid planId' });
+//       }
+  
+//       if (!isValidObjectId(batchId)) {
+//         return res.status(400).json({ error: 'Invalid batchId' });
+//       }
+  
+//       const bookings = await MembershipBooking.find({
+//         plan: planId,
+//         batchId: batchId,
+//         // Add any status filter if applicable here
+//       })
+//         .populate('user')
+//         .populate('plan')
+//         .sort({ createdAt: -1 });
+  
+//       return res.status(200).json({ confirmedMembershipBookings: bookings });
+//     } catch (error) {
+//       console.error('Error fetching confirmed membership bookings:', error);
+//       return res.status(500).json({ error: 'Server error' });
+//     }
+//   };
+  
+
+const INTERVAL_TO_MONTHS = {
+    MONTHLY: 1,
+    '3_MONTHS': 3,
+    '6_MONTHS': 6,
+    YEARLY: 12
+  };
+  
   exports.getConfirmedMembershipBookings = async (req, res) => {
     try {
       const { planId, batchId } = req.params;
@@ -1106,20 +1142,31 @@ exports.renewMembership = async (req, res) => {
   
       const bookings = await MembershipBooking.find({
         plan: planId,
-        batchId: batchId,
-        // Add any status filter if applicable here
+        batchId: batchId
+        // Add status filter here if your schema supports it
       })
         .populate('user')
         .populate('plan')
         .sort({ createdAt: -1 });
   
-      return res.status(200).json({ confirmedMembershipBookings: bookings });
+      // Calculate end_date if not set, based on plan billing_interval
+      const bookingsWithCalculatedEndDate = bookings.map(booking => {
+        if (!booking.end_date && booking.plan && booking.plan.billing_interval) {
+          const start = booking.start_date ? new Date(booking.start_date) : new Date();
+          const monthsToAdd = INTERVAL_TO_MONTHS[booking.plan.billing_interval] || 0;
+          const calculatedEndDate = new Date(start);
+          calculatedEndDate.setMonth(calculatedEndDate.getMonth() + monthsToAdd);
+          booking.end_date = calculatedEndDate;
+        }
+        return booking;
+      });
+  
+      return res.status(200).json({ confirmedMembershipBookings: bookingsWithCalculatedEndDate });
     } catch (error) {
       console.error('Error fetching confirmed membership bookings:', error);
       return res.status(500).json({ error: 'Server error' });
     }
-  };
-  
+  }
 
   exports.getAdminBookingSummary = async (req, res) => {
     try {
