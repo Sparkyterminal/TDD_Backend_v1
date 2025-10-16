@@ -1092,30 +1092,43 @@ exports.renewMembership = async (req, res) => {
       return res.status(500).json({ error: 'Server error' });
     }
   };
-  
 
-  exports.getBookingsByBatchAndName = async (req, res) => {
+
+  exports.getAdminBookingSummary = async (req, res) => {
     try {
-      const { batchId, membershipName } = req.query;
+      // Get bookings grouped by batchId (with populated batch info)
+      const batches = await MembershipBooking.aggregate([
+        {
+          $group: {
+            _id: '$batchId',
+            bookings: { $push: '$$ROOT' }
+          }
+        }
+      ]);
   
-      let query = {};
+      // Get bookings grouped by membership plan name
+      const memberships = await MembershipBooking.aggregate([
+        {
+          $lookup: {
+            from: 'membershipplans',
+            localField: 'plan',
+            foreignField: '_id',
+            as: 'planInfo'
+          }
+        },
+        { $unwind: '$planInfo' },
+        {
+          $group: {
+            _id: '$planInfo.name',
+            bookings: { $push: '$$ROOT' }
+          }
+        }
+      ]);
   
-      if (batchId) {
-        query.batchId = batchId;
-      }
-  
-      if (membershipName) {
-        const plans = await MembershipPlan.find({ name: membershipName }, { _id: 1 });
-        const planIds = plans.map(plan => plan._id);
-        query.plan = { $in: planIds };
-      }
-  
-      const bookings = await MembershipBooking.find(query)
-        .populate('plan', 'name billing_interval')
-        .populate('user', 'name email')
-        .exec();
-  
-      res.json(bookings);
+      res.json({
+        batches,
+        memberships
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

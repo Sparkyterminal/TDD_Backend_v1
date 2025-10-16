@@ -469,6 +469,6 @@ router.get('/user/:userId', plansController.getUserMemberships);
 router.get('/:id', validateId, plansController.getPlanById);
 router.put('/:id', validateId, validateUpdateMembershipPlan, plansController.updatePlan);
 router.delete('/:id', validateId, plansController.deletePlan);
-router.get('/bookingsByBatch', membershipBookingController.getBookingsByBatchAndName);
+router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
 
 module.exports = router;
