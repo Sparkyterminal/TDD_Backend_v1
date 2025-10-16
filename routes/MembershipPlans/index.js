@@ -464,11 +464,11 @@ router.get('/', validatePagination, plansController.getPlans);
 router.post('/booking', plansController.createBooking);
 router.get('/check-status', plansController.checkMembershipStatus);
 router.get('/bookings', plansController.getMembershipBookings);
+router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
 router.post('/:membershipBookingId/renew', plansController.renewMembership);
 router.get('/user/:userId', plansController.getUserMemberships);
 router.get('/:id', validateId, plansController.getPlanById);
 router.put('/:id', validateId, validateUpdateMembershipPlan, plansController.updatePlan);
 router.delete('/:id', validateId, plansController.deletePlan);
-router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
 
 module.exports = router;
