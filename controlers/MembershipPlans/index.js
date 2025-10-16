@@ -8,7 +8,7 @@ const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sd
 const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
-const env = Env.SANDBOX
+const env = Env.PRODUCTION
 // const { isValidObjectId, Types } = require('mongoose');
 
 const client = new StandardCheckoutClient(clientId, clientSecret, env)
@@ -746,7 +746,8 @@ exports.createBooking = async (req, res) => {
       });
   
       const merchantOrderId = booking._id.toString();
-      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+
+      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
   
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
@@ -829,15 +830,18 @@ exports.checkMembershipStatus = async (req, res) => {
       } else {
         console.log('Missing plan or batchId, capacity not decremented');
       }
+      return res.redirect(`https://www.thedancedistrict.in/payment-success`);
 
-      return res.redirect('http://localhost:5173/payment-success');
+    //   return res.redirect('http://localhost:5173/payment-success');
     } else {
       // Payment failure
       await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
         'paymentResult.status': 'FAILED',
         'paymentResult.phonepeResponse': response
       });
-      return res.redirect('http://localhost:5173/payment-failure');
+      return res.redirect(`https://www.thedancedistrict.in/payment-failure`);
+
+    //   return res.redirect('http://localhost:5173/payment-failure');
     }
   } catch (err) {
     console.error('checkMembershipStatus:', err);
@@ -1065,7 +1069,7 @@ exports.renewMembership = async (req, res) => {
       });
   
       const merchantOrderId = renewalBooking._id.toString();
-      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
   
       // Calculate and add fixed Rs.500 fee, convert to paise
       const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;

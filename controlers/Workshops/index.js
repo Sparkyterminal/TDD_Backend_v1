@@ -5,7 +5,7 @@ const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sd
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.SANDBOX
+const env = Env.PRODUCTION
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 function isValidObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id);
@@ -328,7 +328,8 @@ exports.bookWorkshop = async (req, res) => {
     await booking.save();
 
     const merchantOrderId = booking._id.toString();
-    const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+    const redirectUrl = `https://www.thedancedistrict.in/api/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+    // const redirectUrl = `http://localhost:4044/workshop/check-status?merchantOrderId=${merchantOrderId}`;
     const priceInPaise = Math.round((totalPrice || 0) * 100);
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
       .merchantOrderId(merchantOrderId)
@@ -425,7 +426,8 @@ exports.getStatusOfPayment = async (req, res) => {
             status: 'FAILED'
           }
         );
-        return res.redirect(`http://localhost:5173/payment-failure`);
+        return res.redirect(`https://www.thedancedistrict.in/payment-failure`);
+        // return res.redirect(`http://localhost:5173/payment-failure`);
       }
 
       // Mark booking as CONFIRMED with payment details
@@ -438,8 +440,9 @@ exports.getStatusOfPayment = async (req, res) => {
           status: 'CONFIRMED'
         }
       );
+      return res.redirect(`https://www.thedancedistrict.in/payment-success`);
 
-      return res.redirect(`http://localhost:5173/payment-success`);
+      // return res.redirect(`http://localhost:5173/payment-success`);
     } else {
       // Payment not completed - mark FAILED
       await Booking.findByIdAndUpdate(
@@ -450,8 +453,9 @@ exports.getStatusOfPayment = async (req, res) => {
           status: 'FAILED'
         }
       );
+      return res.redirect(`https://www.thedancedistrict.in/payment-failure`);
 
-      return res.redirect(`http://localhost:5173/payment-failure`);
+      // return res.redirect(`http://localhost:5173/payment-failure`);
     }
   } catch (error) {
     console.error('Error while checking payment status:', error);
