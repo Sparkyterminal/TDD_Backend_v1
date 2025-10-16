@@ -60,6 +60,7 @@ const classTypeRoutes = require('./routes/ClassTypes');
 const workshopRoutes = require('./routes/Workshops');
 const classSessionRoutes = require('./routes/ClassSessions');
 const membershipPlanRoutes = require('./routes/MembershipPlans');
+const  rentalContact = require('./routes/RentalContact')
 // Routes
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}media-type`, mediaTypeRoutes);
@@ -68,6 +69,7 @@ app.use(`${API_ROOT}class-type`, classTypeRoutes);
 app.use(`${API_ROOT}workshop`, workshopRoutes);
 app.use(`${API_ROOT}class-session`, classSessionRoutes);
 app.use(`${API_ROOT}membership-plan`, membershipPlanRoutes);
+app.use(`${API_ROOT}rental-contact`, rentalContact);
 // Root route
 app.get('/', (req, res) => {
     res.send('Hello from Node.js backend!');
