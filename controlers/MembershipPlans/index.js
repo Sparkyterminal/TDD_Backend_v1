@@ -1092,7 +1092,34 @@ exports.renewMembership = async (req, res) => {
       return res.status(500).json({ error: 'Server error' });
     }
   };
-
+  exports.getConfirmedMembershipBookings = async (req, res) => {
+    try {
+      const { planId, batchId } = req.params;
+  
+      if (!isValidObjectId(planId)) {
+        return res.status(400).json({ error: 'Invalid planId' });
+      }
+  
+      if (!isValidObjectId(batchId)) {
+        return res.status(400).json({ error: 'Invalid batchId' });
+      }
+  
+      const bookings = await MembershipBooking.find({
+        plan: planId,
+        batchId: batchId,
+        // Add any status filter if applicable here
+      })
+        .populate('user')
+        .populate('plan')
+        .sort({ createdAt: -1 });
+  
+      return res.status(200).json({ confirmedMembershipBookings: bookings });
+    } catch (error) {
+      console.error('Error fetching confirmed membership bookings:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  };
+  
 
   exports.getAdminBookingSummary = async (req, res) => {
     try {
