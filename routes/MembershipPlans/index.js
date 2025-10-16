@@ -464,6 +464,8 @@ router.get('/', validatePagination, plansController.getPlans);
 router.post('/booking', plansController.createBooking);
 router.get('/check-status', plansController.checkMembershipStatus);
 router.get('/bookings', plansController.getMembershipBookings);
+router.get('/:planId/:batchId/bookings', membershipController.getConfirmedMembershipBookings);
+
 router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
 router.post('/:membershipBookingId/renew', plansController.renewMembership);
 router.get('/user/:userId', plansController.getUserMemberships);
