@@ -22,6 +22,10 @@ const membershipBookingSchema = new Schema(
             ref: 'membershipplan',
             required: true
         },
+        billing_interval: {
+            type: String,
+            required: true,
+        },
         batchId: {
             type: ObjectId,
             ref: 'membershipplan.batches',
