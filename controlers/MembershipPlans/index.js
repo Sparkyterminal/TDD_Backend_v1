@@ -1093,3 +1093,30 @@ exports.renewMembership = async (req, res) => {
     }
   };
   
+
+  exports.getBookingsByBatchAndName = async (req, res) => {
+    try {
+      const { batchId, membershipName } = req.query;
+  
+      let query = {};
+  
+      if (batchId) {
+        query.batchId = batchId;
+      }
+  
+      if (membershipName) {
+        const plans = await MembershipPlan.find({ name: membershipName }, { _id: 1 });
+        const planIds = plans.map(plan => plan._id);
+        query.plan = { $in: planIds };
+      }
+  
+      const bookings = await MembershipBooking.find(query)
+        .populate('plan', 'name billing_interval')
+        .populate('user', 'name email')
+        .exec();
+  
+      res.json(bookings);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  };

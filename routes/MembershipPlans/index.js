@@ -242,6 +242,7 @@ const express = require('express');
 const router = express.Router();
 const { body, param, query } = require('express-validator');
 const plansController = require('../../controlers/MembershipPlans');
+const membershipBookingController = require('../../controlers/MembershipPlans');
 
 // Validation for batches with schedule array
 const validateBatches = body('batches')
@@ -468,5 +469,6 @@ router.get('/user/:userId', plansController.getUserMemberships);
 router.get('/:id', validateId, plansController.getPlanById);
 router.put('/:id', validateId, validateUpdateMembershipPlan, plansController.updatePlan);
 router.delete('/:id', validateId, plansController.deletePlan);
+router.get('/bookingsByBatch', membershipBookingController.getBookingsByBatchAndName);
 
 module.exports = router;
