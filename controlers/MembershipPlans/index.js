@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+require('dotenv').config();
 const MembershipPlan = require('../../modals/MembershipPlans');
 const MembershipBooking = require('../../modals/MembershipBooking');
 const ClassType = require('../../modals/ClassTypes');
