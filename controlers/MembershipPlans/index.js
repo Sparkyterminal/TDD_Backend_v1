@@ -6,13 +6,14 @@ const ClassType = require('../../modals/ClassTypes');
 const User = require('../../modals/Users');
 const bcrypt = require('bcryptjs');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
-const jwt = require('jsonwebtoken');
-const clientId = 'SU2510151630541019332818'
-const clientSecret = '1d277db1-018a-4a96-9300-24018ee0d6eb'
-const env = Env.PRODUCTION
-// const { isValidObjectId, Types } = require('mongoose');
 
-const client = new StandardCheckoutClient(clientId, clientSecret, env)
+// const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
+const jwt = require('jsonwebtoken');
+const clientId = process.env.CLIENT_ID
+const clientSecret = process.env.CLIENT_SECRET
+const clientVersion = 1
+const env = Env.PRODUCTION
+const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id);
