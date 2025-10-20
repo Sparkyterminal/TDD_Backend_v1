@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const axios = require('axios');
+
 require('dotenv').config();
 const MembershipPlan = require('../../modals/MembershipPlans');
 const MembershipBooking = require('../../modals/MembershipBooking');
@@ -916,7 +918,7 @@ exports.createBooking = async (req, res) => {
   
       const merchantOrderId = booking._id.toString();
       const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-  
+      // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
@@ -937,6 +939,84 @@ exports.createBooking = async (req, res) => {
 
 // Check payment status and update booking, user, and batch capacity
 
+// exports.checkMembershipStatus = async (req, res) => {
+//   console.log('checkMembershipStatus invoked with query:', req.query);
+//   try {
+//     const { merchantOrderId } = req.query;
+//     if (!merchantOrderId)
+//       return res.status(400).send('merchantOrderId is required');
+
+//     const response = await client.getOrderStatus(merchantOrderId);
+//     const status = response.state;
+
+//     const booking = await MembershipBooking.findById(merchantOrderId);
+//     if (!booking)
+//       return res.status(404).send('Booking not found');
+
+//     if (status === 'COMPLETED') {
+//       // User management
+//       let user = await User.findOne({ 'email_data.email_id': booking.email });
+//       if (!user) {
+//         const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+//         const lastName = rest.join(' ');
+//         const password = `${firstName || 'User'}@123`;
+//         const hashedPassword = await bcrypt.hash(password, 10);
+
+//         user = await User.create({
+//           first_name: firstName || 'User',
+//           last_name: lastName || '',
+//           media: [],
+//           email_data: { temp_email_id: booking.email, is_validated: true },
+//           phone_data: { phone_number: booking.mobile_number, is_validated: true },
+//           role: 'USER',
+//           password: hashedPassword,
+//           is_active: true,
+//           is_archived: false
+//         });
+//       }
+
+//       // Mark booking paid
+//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+//         user: user._id,
+//         'paymentResult.status': 'COMPLETED',
+//         'paymentResult.paymentDate': new Date(),
+//         'paymentResult.phonepeResponse': response
+//       });
+
+//       // Decrement capacity for the booked batch
+//       const plan = await mongoose.model('membershipplan').findById(booking.plan);
+//       if (plan && plan.batches && booking.batchId) {
+//         plan.batches = plan.batches.map(batch => {
+//           if (
+//             batch._id.toString() === booking.batchId.toString() &&
+//             batch.capacity !== undefined &&
+//             batch.capacity > 0
+//           ) {
+//             batch.capacity -= 1;
+//           }
+//           return batch;
+//         });
+//         await plan.save();
+//       } else {
+//         console.log('Missing plan or batchId, capacity not decremented');
+//       }
+
+//       return res.redirect('https://www.thedancedistrict.in/payment-success');
+//     } else {
+//       // Payment failure
+//       await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
+//         'paymentResult.status': 'FAILED',
+//         'paymentResult.phonepeResponse': response
+//       });
+//       return res.redirect('https://www.thedancedistrict.in/payment-failure');
+//     }
+//   } catch (err) {
+//     console.error('checkMembershipStatus:', err);
+//     res.status(500).send('Internal server error');
+//   }
+// };
+
+
 exports.checkMembershipStatus = async (req, res) => {
   console.log('checkMembershipStatus invoked with query:', req.query);
   try {
@@ -944,22 +1024,22 @@ exports.checkMembershipStatus = async (req, res) => {
     if (!merchantOrderId)
       return res.status(400).send('merchantOrderId is required');
 
+    // Get payment status from PhonePe
     const response = await client.getOrderStatus(merchantOrderId);
     const status = response.state;
 
-    const booking = await MembershipBooking.findById(merchantOrderId);
+    const booking = await MembershipBooking.findById(merchantOrderId).populate('plan').lean();
     if (!booking)
       return res.status(404).send('Booking not found');
 
     if (status === 'COMPLETED') {
-      // User management
+      // User creation or fetch
       let user = await User.findOne({ 'email_data.email_id': booking.email });
       if (!user) {
         const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
         const lastName = rest.join(' ');
         const password = `${firstName || 'User'}@123`;
         const hashedPassword = await bcrypt.hash(password, 10);
-
         user = await User.create({
           first_name: firstName || 'User',
           last_name: lastName || '',
@@ -973,7 +1053,7 @@ exports.checkMembershipStatus = async (req, res) => {
         });
       }
 
-      // Mark booking paid
+      // Update booking with user and payment details
       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
         user: user._id,
         'paymentResult.status': 'COMPLETED',
@@ -981,10 +1061,10 @@ exports.checkMembershipStatus = async (req, res) => {
         'paymentResult.phonepeResponse': response
       });
 
-      // Decrement capacity for the booked batch
-      const plan = await mongoose.model('membershipplan').findById(booking.plan);
-      if (plan && plan.batches && booking.batchId) {
-        plan.batches = plan.batches.map(batch => {
+      // Decrement batch capacity in plan
+      const planDoc = await mongoose.model('membershipplan').findById(booking.plan._id);
+      if (planDoc && planDoc.batches && booking.batchId) {
+        planDoc.batches = planDoc.batches.map(batch => {
           if (
             batch._id.toString() === booking.batchId.toString() &&
             batch.capacity !== undefined &&
@@ -994,26 +1074,197 @@ exports.checkMembershipStatus = async (req, res) => {
           }
           return batch;
         });
-        await plan.save();
+        await planDoc.save();
       } else {
         console.log('Missing plan or batchId, capacity not decremented');
       }
 
+      // Prepare WhatsApp message details
+      let mobileNumber = booking.mobile_number?.toString().trim() || '';
+      if (mobileNumber) {
+        const digits = mobileNumber.replace(/\D/g, '');
+        if (digits.length === 10) mobileNumber = `+91${digits}`;
+        else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
+        else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
+      }
+      console.log('booking membership', booking);
+const dancerName = booking.name || 'Participant';
+const membershipPlan = booking.plan?.name || 'Membership Plan';
+
+const billingIntervalMonthsMap = {
+  monthly: 1,
+  quarterly: 3,
+  half_yearly: 6,
+  yearly: 12,
+};
+
+// Get batch start date (assuming batch has a `startDate` ISO string field)
+const batch = booking.plan.batches.find(b => b._id.toString() === booking.batchId.toString());
+const batchStartDate = batch?.startDate || booking.start_date || new Date();
+
+const monthsToAdd = billingIntervalMonthsMap[booking.billing_interval] || 1;
+
+const startDate = new Date(batchStartDate);
+const expiryDate = new Date(startDate);
+expiryDate.setMonth(expiryDate.getMonth() + monthsToAdd);
+
+// Format dates as dd/mm/yyyy
+const formattedStartDate = startDate.toLocaleDateString('en-GB');
+const formattedExpiryDate = expiryDate.toLocaleDateString('en-GB');
+
+const contactNo = '+91 8073139244';
+
+const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1';
+const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '15558600955';
+
+const messagePayload = {
+  integrated_number: WHATSAPP_NUMBER,
+  content_type: "template",
+  payload: {
+    messaging_product: "whatsapp",
+    type: "template",
+    template: {
+      name: "membership_confirmation",
+      language: { code: "en", policy: "deterministic" },
+      namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
+      to_and_components: [
+        {
+          to: [mobileNumber],
+          components: {
+            body_1: { type: "text", value: dancerName },
+            body_2: { type: "text", value: membershipPlan },
+            body_3: { type: "text", value: formattedStartDate },
+            body_4: { type: "text", value: formattedExpiryDate },
+            body_5: { type: "text", value: contactNo }
+          }
+        }
+      ]
+    }
+  }
+};
+
+
+      // Send WhatsApp message
+      try {
+        const axiosResponse = await axios.post(
+          'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+          messagePayload,
+          {
+            headers: {
+              authkey: '473576AtOfLQYl68f619aaP1',
+              'Content-Type': 'application/json',
+              Accept: 'application/json'
+            }
+          }
+        );
+        console.log('WhatsApp message sent response:', axiosResponse.data);
+      } catch (whatsappError) {
+        console.error(
+          'Failed to send WhatsApp message:',
+          whatsappError.response?.data || whatsappError.message || whatsappError
+        );
+      }
+
+      // Redirect to success page
       return res.redirect('https://www.thedancedistrict.in/payment-success');
+      // return res.redirect(`http://localhost:5173/payment-success`);
+
+
     } else {
-      // Payment failure
+      // Payment failed
       await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
         'paymentResult.status': 'FAILED',
         'paymentResult.phonepeResponse': response
       });
       return res.redirect('https://www.thedancedistrict.in/payment-failure');
+      // return res.redirect(`http://localhost:5173/payment-failure`);
+
     }
   } catch (err) {
     console.error('checkMembershipStatus:', err);
-    res.status(500).send('Internal server error');
+    return res.status(500).send('Internal server error');
   }
 };
 
+// exports.checkMembershipStatus = async (req, res) => {
+//   console.log('checkMembershipStatus invoked with query:', req.query);
+//   try {
+//     const { merchantOrderId } = req.query;
+//     if (!merchantOrderId)
+//       return res.status(400).send('merchantOrderId is required');
+
+//     // Check payment status from PhonePe
+//     const response = await client.getOrderStatus(merchantOrderId);
+//     const status = response.state;
+
+//     const booking = await MembershipBooking.findById(merchantOrderId);
+//     if (!booking)
+//       return res.status(404).send('Booking not found');
+
+//     if (status === 'COMPLETED') {
+//       // Create or find a user
+//       let user = await User.findOne({ 'email_data.email_id': booking.email });
+//       if (!user) {
+//         const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+//         const lastName = rest.join(' ');
+//         const password = `${firstName || 'User'}@123`;
+//         const hashedPassword = await bcrypt.hash(password, 10);
+
+//         user = await User.create({
+//           first_name: firstName || 'User',
+//           last_name: lastName || '',
+//           media: [],
+//           email_data: { temp_email_id: booking.email, is_validated: true },
+//           phone_data: { phone_number: booking.mobile_number, is_validated: true },
+//           role: 'USER',
+//           password: hashedPassword,
+//           is_active: true,
+//           is_archived: false
+//         });
+//       }
+
+//       // Update booking with payment info and reference user
+//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+//         user: user._id,
+//         'paymentResult.status': 'COMPLETED',
+//         'paymentResult.paymentDate': new Date(),
+//         'paymentResult.phonepeResponse': response
+//       });
+
+//       // Decrement batch capacity
+//       const plan = await MembershipPlan.findById(booking.plan);
+//       if (plan && plan.batches && booking.batchId) {
+//         plan.batches = plan.batches.map(batch => {
+//           if (
+//             batch._id.toString() === booking.batchId.toString() &&
+//             batch.capacity !== undefined &&
+//             batch.capacity > 0
+//           ) {
+//             batch.capacity -= 1;
+//           }
+//           return batch;
+//         });
+//         await plan.save();
+//       } else {
+//         console.log('Missing plan or batchId, capacity not decremented');
+//       }
+
+//       // Redirect to success page
+//       return res.redirect('https://www.thedancedistrict.in/payment-success');
+
+//     } else {
+//       // Mark payment as failed
+//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+//         'paymentResult.status': 'FAILED',
+//         'paymentResult.phonepeResponse': response
+//       });
+//       return res.redirect('https://www.thedancedistrict.in/payment-failure');
+//     }
+//   } catch (err) {
+//     console.error('checkMembershipStatus:', err);
+//     return res.status(500).send('Internal server error');
+//   }
+// }
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
