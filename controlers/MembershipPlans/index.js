@@ -1631,7 +1631,7 @@ const INTERVAL_TO_MONTHS = {
 
 exports.getAllMembershipBookings = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status, planId, userId } = req.query;
+    const { page = 1, limit = 10, status, planId, userId, batchId, search } = req.query;
     const skip = (page - 1) * limit;
 
     // Build match filter for aggregation
@@ -1647,6 +1647,10 @@ exports.getAllMembershipBookings = async (req, res) => {
     
     if (userId && isValidObjectId(userId)) {
       matchFilter.user = new mongoose.Types.ObjectId(userId);
+    }
+    
+    if (batchId && isValidObjectId(batchId)) {
+      matchFilter.batchId = new mongoose.Types.ObjectId(batchId);
     }
 
     // Aggregation pipeline
@@ -1704,24 +1708,42 @@ exports.getAllMembershipBookings = async (req, res) => {
       // Remove the temporary arrays
       {
         $unset: ['userData', 'planData']
-      },
-      
-      // Sort by creation date (newest first)
-      { $sort: { createdAt: -1 } },
-      
-      // Facet for pagination and total count
-      {
-        $facet: {
-          bookings: [
-            { $skip: skip },
-            { $limit: parseInt(limit) }
-          ],
-          totalCount: [
-            { $count: 'count' }
-          ]
-        }
       }
     ];
+
+    // Add search functionality if search query is provided
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      pipeline.push({
+        $match: {
+          $or: [
+            { name: searchRegex },
+            { email: searchRegex },
+            { mobile_number: searchRegex },
+            { 'user.name': searchRegex },
+            { 'user.email': searchRegex },
+            { 'user.mobile_number': searchRegex },
+            { 'plan.name': searchRegex }
+          ]
+        }
+      });
+    }
+    
+    // Add sorting
+    pipeline.push({ $sort: { createdAt: -1 } });
+    
+    // Add facet for pagination and total count
+    pipeline.push({
+      $facet: {
+        bookings: [
+          { $skip: skip },
+          { $limit: parseInt(limit) }
+        ],
+        totalCount: [
+          { $count: 'count' }
+        ]
+      }
+    });
 
     const result = await MembershipBooking.aggregate(pipeline);
     
@@ -1744,6 +1766,13 @@ exports.getAllMembershipBookings = async (req, res) => {
           itemsPerPage: parseInt(limit),
           hasNextPage,
           hasPrevPage
+        },
+        filters: {
+          status: status || null,
+          planId: planId || null,
+          userId: userId || null,
+          batchId: batchId || null,
+          search: search || null
         }
       }
     });
