@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.PRODUCTION
+const env = Env.SANDBOX
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -917,8 +917,8 @@ exports.createBooking = async (req, res) => {
       });
   
       const merchantOrderId = booking._id.toString();
-      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-      // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+      // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
@@ -1166,8 +1166,8 @@ const messagePayload = {
       }
 
       // Redirect to success page
-      return res.redirect('https://www.thedancedistrict.in/payment-success');
-      // return res.redirect(`http://localhost:5173/payment-success`);
+      // return res.redirect('https://www.thedancedistrict.in/payment-success');
+      return res.redirect(`http://localhost:5173/payment-success`);
 
 
     } else {
@@ -1176,8 +1176,8 @@ const messagePayload = {
         'paymentResult.status': 'FAILED',
         'paymentResult.phonepeResponse': response
       });
-      return res.redirect('https://www.thedancedistrict.in/payment-failure');
-      // return res.redirect(`http://localhost:5173/payment-failure`);
+      // return res.redirect('https://www.thedancedistrict.in/payment-failure');
+      return res.redirect(`http://localhost:5173/payment-failure`);
 
     }
   } catch (err) {
@@ -1628,3 +1628,225 @@ const INTERVAL_TO_MONTHS = {
       res.status(500).json({ error: error.message });
     }
   };
+
+exports.getAllMembershipBookings = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, planId, userId } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Build match filter for aggregation
+    const matchFilter = {};
+    
+    if (status) {
+      matchFilter['paymentResult.status'] = status;
+    }
+    
+    if (planId && isValidObjectId(planId)) {
+      matchFilter.plan = new mongoose.Types.ObjectId(planId);
+    }
+    
+    if (userId && isValidObjectId(userId)) {
+      matchFilter.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    // Aggregation pipeline
+    const pipeline = [
+      // Match stage
+      { $match: matchFilter },
+      
+      // Lookup user data
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData',
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+                email: 1,
+                mobile_number: 1
+              }
+            }
+          ]
+        }
+      },
+      
+      // Lookup plan data
+      {
+        $lookup: {
+          from: 'membershipplans',
+          localField: 'plan',
+          foreignField: '_id',
+          as: 'planData',
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+                price: 1,
+                billing_interval: 1,
+                plan_for: 1
+              }
+            }
+          ]
+        }
+      },
+      
+      // Add fields to reshape the data
+      {
+        $addFields: {
+          user: { $arrayElemAt: ['$userData', 0] },
+          plan: { $arrayElemAt: ['$planData', 0] }
+        }
+      },
+      
+      // Remove the temporary arrays
+      {
+        $unset: ['userData', 'planData']
+      },
+      
+      // Sort by creation date (newest first)
+      { $sort: { createdAt: -1 } },
+      
+      // Facet for pagination and total count
+      {
+        $facet: {
+          bookings: [
+            { $skip: skip },
+            { $limit: parseInt(limit) }
+          ],
+          totalCount: [
+            { $count: 'count' }
+          ]
+        }
+      }
+    ];
+
+    const result = await MembershipBooking.aggregate(pipeline);
+    
+    const bookings = result[0].bookings;
+    const total = result[0].totalCount[0]?.count || 0;
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(total / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        bookings,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalItems: total,
+          itemsPerPage: parseInt(limit),
+          hasNextPage,
+          hasPrevPage
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching membership bookings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching membership bookings',
+      error: error.message
+    });
+  }
+};
+
+exports.getMembershipBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID'
+      });
+    }
+
+    // Aggregation pipeline for single booking
+    const pipeline = [
+      // Match the specific booking
+      { $match: { _id: new mongoose.Types.ObjectId(id) } },
+      
+      // Lookup user data
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData',
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+                email: 1,
+                mobile_number: 1
+              }
+            }
+          ]
+        }
+      },
+      
+      // Lookup plan data
+      {
+        $lookup: {
+          from: 'membershipplans',
+          localField: 'plan',
+          foreignField: '_id',
+          as: 'planData',
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+                price: 1,
+                billing_interval: 1,
+                plan_for: 1
+              }
+            }
+          ]
+        }
+      },
+      
+      // Add fields to reshape the data
+      {
+        $addFields: {
+          user: { $arrayElemAt: ['$userData', 0] },
+          plan: { $arrayElemAt: ['$planData', 0] }
+        }
+      },
+      
+      // Remove the temporary arrays
+      {
+        $unset: ['userData', 'planData']
+      }
+    ];
+
+    const result = await MembershipBooking.aggregate(pipeline);
+    
+    if (!result || result.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Membership booking not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result[0]
+    });
+
+  } catch (error) {
+    console.error('Error fetching membership booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching membership booking',
+      error: error.message
+    });
+  }
+};

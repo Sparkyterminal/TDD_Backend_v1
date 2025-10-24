@@ -463,7 +463,8 @@ router.post('/', validateMembershipPlan, plansController.createPlan);
 router.get('/', validatePagination, plansController.getPlans);
 router.post('/booking', plansController.createBooking);
 router.get('/check-status', plansController.checkMembershipStatus);
-router.get('/bookings', plansController.getMembershipBookings);
+router.get('/bookings/all', plansController.getAllMembershipBookings);
+router.get('/bookings/:id', validateId, plansController.getMembershipBookingById);
 router.get('/:planId/:batchId/bookings', membershipBookingController.getConfirmedMembershipBookings);
 
 router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
@@ -472,5 +473,6 @@ router.get('/user/:userId', plansController.getUserMemberships);
 router.get('/:id', validateId, plansController.getPlanById);
 router.put('/:id', validateId, validateUpdateMembershipPlan, plansController.updatePlan);
 router.delete('/:id', validateId, plansController.deletePlan);
+router.get('/bookings', plansController.getMembershipBookings);
 
 module.exports = router;

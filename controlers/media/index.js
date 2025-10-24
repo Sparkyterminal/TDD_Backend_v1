@@ -718,4 +718,63 @@ module.exports.getThisAuthFile = async (req, res) => {
             error
         });
     }
+}
+
+exports.getLocalVideos = async (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Define video directories to scan
+        const videoDirectories = [
+            path.join(__dirname, '../../assets'),
+            path.join(__dirname, '../../assets/rentals'),
+            path.join(__dirname, '../../assets/images'),
+            path.join(__dirname, '../../../TDD_frontend_v1/public/assets'),
+            path.join(__dirname, '../../../TDD_frontend_v1/public/assets/rentals')
+        ];
+        
+        const videos = [];
+        
+        // Scan each directory for video files
+        videoDirectories.forEach(dir => {
+            if (fs.existsSync(dir)) {
+                const files = fs.readdirSync(dir);
+                files.forEach(file => {
+                    const ext = path.extname(file).toLowerCase();
+                    if (['.mp4', '.webm', '.avi', '.mov', '.mkv'].includes(ext)) {
+                        let videoUrl;
+                        
+                        // Check if it's from frontend public assets
+                        if (dir.includes('TDD_frontend_v1/public/assets')) {
+                            const relativePath = path.relative(path.join(__dirname, '../../../TDD_frontend_v1/public'), path.join(dir, file));
+                            videoUrl = `/${relativePath.replace(/\\/g, '/')}`;
+                        } else {
+                            // Backend assets
+                            const relativePath = path.relative(path.join(__dirname, '../../'), path.join(dir, file));
+                            videoUrl = `/api/${relativePath.replace(/\\/g, '/')}`;
+                        }
+                        
+                        videos.push({
+                            name: file,
+                            url: videoUrl
+                        });
+                    }
+                });
+            }
+        });
+        
+        return res.status(STATUS.OK).json({
+            success: true,
+            videos: videos
+        });
+        
+    } catch (error) {
+        console.error("Error getting local videos:", error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Error fetching local videos",
+            error: error.message
+        });
+    }
 };

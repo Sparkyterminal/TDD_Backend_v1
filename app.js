@@ -47,7 +47,7 @@ app.use(express.json({ limit: payloadLimit }));
 app.use(express.urlencoded({ limit: payloadLimit, extended: true }));
 
 // Serve static assets folder
-const API_ROOT = '/api/';
+const API_ROOT = '/';
 app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
 
 // Disable etag for fresh content on each request
@@ -60,6 +60,7 @@ const classTypeRoutes = require('./routes/ClassTypes');
 const workshopRoutes = require('./routes/Workshops');
 const classSessionRoutes = require('./routes/ClassSessions');
 const membershipPlanRoutes = require('./routes/MembershipPlans');
+const bulkMessageRoutes = require('./routes/BulkMessages');
 const  rentalContact = require('./routes/RentalContact')
 const enquire =require('./routes/Enquire')
 // Routes
@@ -70,6 +71,7 @@ app.use(`${API_ROOT}class-type`, classTypeRoutes);
 app.use(`${API_ROOT}workshop`, workshopRoutes);
 app.use(`${API_ROOT}class-session`, classSessionRoutes);
 app.use(`${API_ROOT}membership-plan`, membershipPlanRoutes);
+app.use(`${API_ROOT}bulk-messages`, bulkMessageRoutes);
 app.use(`${API_ROOT}rental-contact`, rentalContact);
 app.use(`${API_ROOT}enquire`, enquire);
 

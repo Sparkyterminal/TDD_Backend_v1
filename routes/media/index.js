@@ -57,4 +57,9 @@ router.get(
     mediaController.getAllAuthFiles
 );
 
+router.get(
+    '/videos',
+    mediaController.getLocalVideos
+);
+
 module.exports = router;
