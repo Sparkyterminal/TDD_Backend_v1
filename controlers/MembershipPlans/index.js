@@ -1415,103 +1415,103 @@ exports.getMembershipBookings = async (req, res) => {
 };
 
 // User: renew expired membership
-exports.renewMembership = async (req, res) => {
-    try {
-      const { membershipBookingId } = req.params;
-      const { planId, userId, batchId } = req.body;
+// exports.renewMembership = async (req, res) => {
+//     try {
+//       const { membershipBookingId } = req.params;
+//       const { planId, userId, batchId } = req.body;
   
-      // Validate IDs
-      if (!isValidObjectId(membershipBookingId)) {
-        return res.status(400).json({ error: 'Invalid membership booking ID' });
-      }
-      if (!planId || !isValidObjectId(planId)) {
-        return res.status(400).json({ error: 'Valid planId is required' });
-      }
-      if (!userId || !isValidObjectId(userId)) {
-        return res.status(400).json({ error: 'Valid userId is required' });
-      }
-      if (!batchId || !isValidObjectId(batchId)) {
-        return res.status(400).json({ error: 'Valid batchId is required' });
-      }
+//       // Validate IDs
+//       if (!isValidObjectId(membershipBookingId)) {
+//         return res.status(400).json({ error: 'Invalid membership booking ID' });
+//       }
+//       if (!planId || !isValidObjectId(planId)) {
+//         return res.status(400).json({ error: 'Valid planId is required' });
+//       }
+//       if (!userId || !isValidObjectId(userId)) {
+//         return res.status(400).json({ error: 'Valid userId is required' });
+//       }
+//       if (!batchId || !isValidObjectId(batchId)) {
+//         return res.status(400).json({ error: 'Valid batchId is required' });
+//       }
   
-      // Find existing booking and check expiry
-      const existingBooking = await MembershipBooking.findById(membershipBookingId).lean();
-      if (!existingBooking) {
-        return res.status(404).json({ error: 'Membership booking not found' });
-      }
-      const now = new Date();
-      if (existingBooking.end_date && existingBooking.end_date > now) {
-        return res.status(400).json({ error: 'Membership is not expired yet' });
-      }
+//       // Find existing booking and check expiry
+//       const existingBooking = await MembershipBooking.findById(membershipBookingId).lean();
+//       if (!existingBooking) {
+//         return res.status(404).json({ error: 'Membership booking not found' });
+//       }
+//       const now = new Date();
+//       if (existingBooking.end_date && existingBooking.end_date > now) {
+//         return res.status(400).json({ error: 'Membership is not expired yet' });
+//       }
   
-      // Fetch new plan and batch to validate existence and capacity
-      const newPlan = await MembershipPlan.findById(planId).lean();
-      if (!newPlan || !newPlan.is_active) {
-        return res.status(404).json({ error: 'Membership plan not found or inactive' });
-      }
-      const batch = newPlan.batches.find(b => b._id.toString() === batchId);
-      if (!batch) {
-        return res.status(400).json({ error: 'Selected batch not found in the membership plan' });
-      }
-      if (batch.capacity !== undefined && batch.capacity <= 0) {
-        return res.status(400).json({ error: 'Selected batch is full' });
-      }
+//       // Fetch new plan and batch to validate existence and capacity
+//       const newPlan = await MembershipPlan.findById(planId).lean();
+//       if (!newPlan || !newPlan.is_active) {
+//         return res.status(404).json({ error: 'Membership plan not found or inactive' });
+//       }
+//       const batch = newPlan.batches.find(b => b._id.toString() === batchId);
+//       if (!batch) {
+//         return res.status(400).json({ error: 'Selected batch not found in the membership plan' });
+//       }
+//       if (batch.capacity !== undefined && batch.capacity <= 0) {
+//         return res.status(400).json({ error: 'Selected batch is full' });
+//       }
   
-      // Calculate new membership end date based on plan's billing interval
-      const INTERVAL_TO_MONTHS = {
-        MONTHLY: 1,
-        '3_MONTHS': 3,
-        '6_MONTHS': 6,
-        YEARLY: 12
-      };
-      const interval = (newPlan.billing_interval || 'MONTHLY').toUpperCase();
-      const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
-      const startDate = existingBooking.end_date || new Date();
-      const endDate = new Date(startDate);
-      endDate.setMonth(endDate.getMonth() + monthsToAdd);
+//       // Calculate new membership end date based on plan's billing interval
+//       const INTERVAL_TO_MONTHS = {
+//         MONTHLY: 1,
+//         '3_MONTHS': 3,
+//         '6_MONTHS': 6,
+//         YEARLY: 12
+//       };
+//       const interval = (newPlan.billing_interval || 'MONTHLY').toUpperCase();
+//       const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
+//       const startDate = existingBooking.end_date || new Date();
+//       const endDate = new Date(startDate);
+//       endDate.setMonth(endDate.getMonth() + monthsToAdd);
   
-      // Create renewed booking
-      const renewalBooking = await MembershipBooking.create({
-        user: userId,
-        plan: newPlan._id,
-        batchId: batch._id,
-        name: existingBooking.name,
-        age: existingBooking.age,
-        email: existingBooking.email,
-        mobile_number: existingBooking.mobile_number,
-        gender: existingBooking.gender,
-        start_date: startDate,
-        end_date: endDate,
-        paymentResult: { status: 'initiated' }
-      });
+//       // Create renewed booking
+//       const renewalBooking = await MembershipBooking.create({
+//         user: userId,
+//         plan: newPlan._id,
+//         batchId: batch._id,
+//         name: existingBooking.name,
+//         age: existingBooking.age,
+//         email: existingBooking.email,
+//         mobile_number: existingBooking.mobile_number,
+//         gender: existingBooking.gender,
+//         start_date: startDate,
+//         end_date: endDate,
+//         paymentResult: { status: 'initiated' }
+//       });
   
-      const merchantOrderId = renewalBooking._id.toString();
-      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+//       const merchantOrderId = renewalBooking._id.toString();
+//       const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
   
-      // Calculate price without additional fees for renewals, convert to paise
-      const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
-      const priceInPaise = Math.round(priceRaw * 100);
+//       // Calculate price without additional fees for renewals, convert to paise
+//       const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
+//       const priceInPaise = Math.round(priceRaw * 100);
   
-      // Build payment request
-      const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
-          .merchantOrderId(merchantOrderId)
-          .amount(priceInPaise)
-          .redirectUrl(redirectUrl)
-          .build();
+//       // Build payment request
+//       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//           .merchantOrderId(merchantOrderId)
+//           .amount(priceInPaise)
+//           .redirectUrl(redirectUrl)
+//           .build();
   
-      const paymentResponse = await client.pay(paymentRequest);
+//       const paymentResponse = await client.pay(paymentRequest);
   
-      return res.status(201).json({
-        message: 'Membership renewal initiated. Please complete payment.',
-        renewalBooking,
-        checkoutPageUrl: paymentResponse.redirectUrl
-      });
+//       return res.status(201).json({
+//         message: 'Membership renewal initiated. Please complete payment.',
+//         renewalBooking,
+//         checkoutPageUrl: paymentResponse.redirectUrl
+//       });
   
-    } catch (err) {
-      console.error('Renew membership error:', err);
-      return res.status(500).json({ error: 'Server error' });
-    }
-  };
+//     } catch (err) {
+//       console.error('Renew membership error:', err);
+//       return res.status(500).json({ error: 'Server error' });
+//     }
+//   };
 //   exports.getConfirmedMembershipBookings = async (req, res) => {
 //     try {
 //       const { planId, batchId } = req.params;
@@ -1542,11 +1542,126 @@ exports.renewMembership = async (req, res) => {
   
 
 const INTERVAL_TO_MONTHS = {
-    MONTHLY: 1,
-    '3_MONTHS': 3,
-    '6_MONTHS': 6,
-    YEARLY: 12
-  };
+  MONTHLY: 1,
+  '3_MONTHS': 3,
+  '6_MONTHS': 6,
+  YEARLY: 12
+};
+
+// Map common alternative names to schema's values
+const FRONTEND_INTERVAL_MAP = {
+  monthly: 'MONTHLY',
+  quarterly: '3_MONTHS',
+  halfyearly: '6_MONTHS',
+  yearly: 'YEARLY',
+  '3_months': '3_MONTHS',
+  '6_months': '6_MONTHS'
+};
+
+exports.renewMembership = async (req, res) => {
+  try {
+    const { membershipBookingId } = req.params;
+    const { planId, userId, batchId, billing_interval, billingInterval } = req.body;
+
+    // Use billingInterval or billing_interval from frontend, normalize
+    let intervalInput = billingInterval || billing_interval || 'monthly';
+    intervalInput = String(intervalInput).toLowerCase();
+
+    // Map to backend required value
+    let interval = FRONTEND_INTERVAL_MAP[intervalInput] || intervalInput.toUpperCase();
+    const allowedIntervals = Object.keys(INTERVAL_TO_MONTHS);
+    if (!allowedIntervals.includes(interval)) {
+      return res.status(400).json({ error: 'Invalid billing_interval provided' });
+    }
+
+    // Validate IDs
+    if (!isValidObjectId(membershipBookingId)) {
+      return res.status(400).json({ error: 'Invalid membership booking ID' });
+    }
+    if (!planId || !isValidObjectId(planId)) {
+      return res.status(400).json({ error: 'Valid planId is required' });
+    }
+    if (!userId || !isValidObjectId(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    if (!batchId || !isValidObjectId(batchId)) {
+      return res.status(400).json({ error: 'Valid batchId is required' });
+    }
+
+    // Find existing booking and check expiry
+    const existingBooking = await MembershipBooking.findById(membershipBookingId).lean();
+    if (!existingBooking) {
+      return res.status(404).json({ error: 'Membership booking not found' });
+    }
+    const now = new Date();
+    if (existingBooking.end_date && existingBooking.end_date > now) {
+      return res.status(400).json({ error: 'Membership is not expired yet' });
+    }
+
+    // Fetch new plan and batch to validate existence and capacity
+    const newPlan = await MembershipPlan.findById(planId).lean();
+    if (!newPlan || !newPlan.is_active) {
+      return res.status(404).json({ error: 'Membership plan not found or inactive' });
+    }
+    const batch = newPlan.batches.find(b => b._id.toString() === batchId);
+    if (!batch) {
+      return res.status(400).json({ error: 'Selected batch not found in the membership plan' });
+    }
+    if (batch.capacity !== undefined && batch.capacity <= 0) {
+      return res.status(400).json({ error: 'Selected batch is full' });
+    }
+
+    // Calculate new membership end date
+    const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
+    const startDate = existingBooking.end_date || new Date();
+    const effectiveStartDate = startDate > now ? startDate : now;
+    const endDate = new Date(effectiveStartDate);
+    endDate.setMonth(endDate.getMonth() + monthsToAdd);
+
+    // Calculate price
+    const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
+    const totalPrice = priceRaw + 500;
+    const priceInPaise = Math.round(totalPrice * 100);
+
+    // Create renewed booking
+    const renewalBooking = await MembershipBooking.create({
+      user: userId,
+      plan: newPlan._id,
+      batchId: batch._id,
+      name: existingBooking.name,
+      age: existingBooking.age,
+      email: existingBooking.email,
+      mobile_number: existingBooking.mobile_number,
+      gender: existingBooking.gender,
+      start_date: effectiveStartDate,
+      end_date: endDate,
+      billing_interval: interval, // THIS IS THE FIX
+      paymentResult: { status: 'initiated' }
+    });
+
+    const merchantOrderId = renewalBooking._id.toString();
+    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+
+    // Build payment request
+    const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+      .merchantOrderId(merchantOrderId)
+      .amount(priceInPaise)
+      .redirectUrl(redirectUrl)
+      .build();
+
+    const paymentResponse = await client.pay(paymentRequest);
+
+    return res.status(201).json({
+      message: 'Membership renewal initiated. Please complete payment.',
+      renewalBooking,
+      checkoutPageUrl: paymentResponse.redirectUrl
+    });
+  } catch (err) {
+    console.error('Renew membership error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
   
   exports.getConfirmedMembershipBookings = async (req, res) => {
     try {
