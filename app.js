@@ -63,6 +63,8 @@ const membershipPlanRoutes = require('./routes/MembershipPlans');
 const bulkMessageRoutes = require('./routes/BulkMessages');
 const  rentalContact = require('./routes/RentalContact')
 const enquire =require('./routes/Enquire')
+const demoClass =require('./routes/DemoClass')
+
 // Routes
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}media-type`, mediaTypeRoutes);
@@ -74,6 +76,8 @@ app.use(`${API_ROOT}membership-plan`, membershipPlanRoutes);
 app.use(`${API_ROOT}bulk-messages`, bulkMessageRoutes);
 app.use(`${API_ROOT}rental-contact`, rentalContact);
 app.use(`${API_ROOT}enquire`, enquire);
+app.use(`${API_ROOT}enquire`, demoClass);
+
 
 // Root route
 app.get('/', (req, res) => {
