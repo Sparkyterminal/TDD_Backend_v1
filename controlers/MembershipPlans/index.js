@@ -1640,7 +1640,9 @@ exports.renewMembership = async (req, res) => {
     });
 
     const merchantOrderId = renewalBooking._id.toString();
-    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+    // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+    const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+
 
     // Build payment request
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
