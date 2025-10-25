@@ -1033,37 +1033,37 @@ exports.checkMembershipStatus = async (req, res) => {
       return res.status(404).send('Booking not found');
 
     if (status === 'COMPLETED') {
-      // Check if user already exists (this indicates it's a renewal)
-      let user = await User.findOne({ 'email_data.email_id': booking.email });
-      
-      if (user) {
+      // Check if this is a renewal by checking if booking already has a user
+      if (booking.user) {
         // This is a renewal - user already exists, just update the booking
-        console.log('Renewal detected - user already exists:', user._id);
+        console.log('Renewal detected - updating existing user:', booking.user);
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-          user: user._id,
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
           start_date: new Date() // Update start date to payment success date
         });
       } else {
-        // This is a new booking - create new user
-        console.log('New booking detected - creating new user');
-        const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-        const lastName = rest.join(' ');
-        const password = `${firstName || 'User'}@123`;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user = await User.create({
-          first_name: firstName || 'User',
-          last_name: lastName || '',
-          media: [],
-          email_data: { temp_email_id: booking.email, is_validated: true },
-          phone_data: { phone_number: booking.mobile_number, is_validated: true },
-          role: 'USER',
-          password: hashedPassword,
-          is_active: true,
-          is_archived: false
-        });
+        // This is a new booking - create or find user
+        console.log('New booking detected - creating/finding user');
+        let user = await User.findOne({ 'email_data.email_id': booking.email });
+        if (!user) {
+          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+          const lastName = rest.join(' ');
+          const password = `${firstName || 'User'}@123`;
+          const hashedPassword = await bcrypt.hash(password, 10);
+          user = await User.create({
+            first_name: firstName || 'User',
+            last_name: lastName || '',
+            media: [],
+            email_data: { temp_email_id: booking.email, is_validated: true },
+            phone_data: { phone_number: booking.mobile_number, is_validated: true },
+            role: 'USER',
+            password: hashedPassword,
+            is_active: true,
+            is_archived: false
+          });
+        }
 
         // Update booking with user and payment details
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
