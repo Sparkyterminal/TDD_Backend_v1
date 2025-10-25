@@ -2272,6 +2272,258 @@ exports.getMembershipBookingById = async (req, res) => {
 };
 
 // Bulk create users for existing bookings without users
+// Create membership booking manually by admin
+exports.createManualBooking = async (req, res) => {
+  try {
+    const { 
+      planId, 
+      userId, 
+      batchId, 
+      name, 
+      age, 
+      email, 
+      mobile_number, 
+      gender, 
+      billing_interval,
+      payment_status,
+      start_date,
+      end_date
+    } = req.body;
+
+    // Validate required fields
+    if (!planId || !name || !age || !email || !mobile_number || !gender || !billing_interval) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Plan ID, name, age, email, mobile number, gender, and billing interval are required' 
+      });
+    }
+
+    // Validate IDs
+    if (!isValidObjectId(planId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid plan ID' 
+      });
+    }
+
+    if (userId && !isValidObjectId(userId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid user ID' 
+      });
+    }
+
+    if (batchId && !isValidObjectId(batchId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid batch ID' 
+      });
+    }
+
+    // Validate plan exists
+    const plan = await MembershipPlan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Membership plan not found' 
+      });
+    }
+
+    // Validate batch exists in plan (if provided)
+    if (batchId) {
+      const batch = plan.batches.find(b => b._id.toString() === batchId);
+      if (!batch) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Selected batch not found in the membership plan' 
+        });
+      }
+    }
+
+    // Validate user exists (if provided)
+    if (userId) {
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ 
+          success: false,
+          error: 'User not found' 
+        });
+      }
+    }
+
+    // Validate payment status
+    const validPaymentStatuses = ['initiated', 'COMPLETED', 'FAILED', 'PENDING'];
+    if (payment_status && !validPaymentStatuses.includes(payment_status)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid payment status. Must be one of: initiated, COMPLETED, FAILED, PENDING' 
+      });
+    }
+
+    // Validate dates
+    let startDate, endDate;
+    if (start_date) {
+      startDate = new Date(start_date);
+      if (isNaN(startDate.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid start date format' 
+        });
+      }
+    } else {
+      startDate = new Date(); // Default to current date
+    }
+
+    if (end_date) {
+      endDate = new Date(end_date);
+      if (isNaN(endDate.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid end date format' 
+        });
+      }
+    } else {
+      // Calculate end date based on billing interval
+      const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
+      endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + monthsToAdd);
+    }
+
+    // Create the booking
+    const bookingData = {
+      plan: planId,
+      batchId: batchId || null,
+      user: userId || null,
+      name,
+      age,
+      email,
+      mobile_number,
+      gender,
+      billing_interval,
+      start_date: startDate,
+      end_date: endDate,
+      paymentResult: {
+        status: payment_status || 'initiated'
+      }
+    };
+
+    const newBooking = await MembershipBooking.create(bookingData);
+
+    // Populate the response
+    const populatedBooking = await MembershipBooking.findById(newBooking._id)
+      .populate('plan', 'name price billing_interval plan_for')
+      .populate('user', 'first_name last_name email_data phone_data')
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      message: 'Membership booking created successfully',
+      data: populatedBooking
+    });
+
+  } catch (error) {
+    console.error('Error creating manual booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating manual booking',
+      error: error.message
+    });
+  }
+};
+
+// Update membership booking manually by admin
+exports.updateManualBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid booking ID' 
+      });
+    }
+
+    // Validate payment status if provided
+    if (updateData.payment_status) {
+      const validPaymentStatuses = ['initiated', 'COMPLETED', 'FAILED', 'PENDING'];
+      if (!validPaymentStatuses.includes(updateData.payment_status)) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid payment status. Must be one of: initiated, COMPLETED, FAILED, PENDING' 
+        });
+      }
+    }
+
+    // Validate dates if provided
+    if (updateData.start_date) {
+      const startDate = new Date(updateData.start_date);
+      if (isNaN(startDate.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid start date format' 
+        });
+      }
+    }
+
+    if (updateData.end_date) {
+      const endDate = new Date(updateData.end_date);
+      if (isNaN(endDate.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid end date format' 
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateFields = {};
+    if (updateData.planId) updateFields.plan = updateData.planId;
+    if (updateData.userId) updateFields.user = updateData.userId;
+    if (updateData.batchId) updateFields.batchId = updateData.batchId;
+    if (updateData.name) updateFields.name = updateData.name;
+    if (updateData.age) updateFields.age = updateData.age;
+    if (updateData.email) updateFields.email = updateData.email;
+    if (updateData.mobile_number) updateFields.mobile_number = updateData.mobile_number;
+    if (updateData.gender) updateFields.gender = updateData.gender;
+    if (updateData.billing_interval) updateFields.billing_interval = updateData.billing_interval;
+    if (updateData.start_date) updateFields.start_date = new Date(updateData.start_date);
+    if (updateData.end_date) updateFields.end_date = new Date(updateData.end_date);
+    if (updateData.payment_status) {
+      updateFields['paymentResult.status'] = updateData.payment_status;
+    }
+
+    const updatedBooking = await MembershipBooking.findByIdAndUpdate(
+      id,
+      updateFields,
+      { new: true }
+    ).populate('plan', 'name price billing_interval plan_for')
+     .populate('user', 'first_name last_name email_data phone_data')
+     .lean();
+
+    if (!updatedBooking) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Membership booking not found' 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Membership booking updated successfully',
+      data: updatedBooking
+    });
+
+  } catch (error) {
+    console.error('Error updating manual booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating manual booking',
+      error: error.message
+    });
+  }
+};
+
 exports.createUsersForExistingBookings = async (req, res) => {
   try {
     console.log('Starting bulk user creation for existing bookings...');

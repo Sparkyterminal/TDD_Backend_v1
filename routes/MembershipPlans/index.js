@@ -476,4 +476,8 @@ router.delete('/:id', validateId, plansController.deletePlan);
 router.get('/bookings', plansController.getMembershipBookings);
 router.post('/create-users-for-bookings', plansController.createUsersForExistingBookings);
 
+// Manual booking management routes
+router.post('/manual-booking', plansController.createManualBooking);
+router.put('/manual-booking/:id', plansController.updateManualBooking);
+
 module.exports = router;
