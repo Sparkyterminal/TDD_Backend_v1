@@ -1584,7 +1584,7 @@ const INTERVAL_TO_MONTHS = {
 const FRONTEND_INTERVAL_MAP = {
   monthly: 'MONTHLY',
   quarterly: '3_MONTHS',
-  halfyearly: '6_MONTHS',
+  half_yearly: '6_MONTHS',
   yearly: 'YEARLY',
   '3_months': '3_MONTHS',
   '6_months': '6_MONTHS'
