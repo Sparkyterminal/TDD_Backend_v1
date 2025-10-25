@@ -1041,13 +1041,17 @@ exports.checkMembershipStatus = async (req, res) => {
       if (booking.user) {
         // This is a renewal - user already exists, just update the booking
         console.log('Renewal detected - updating existing user:', booking.user);
+        console.log('Updating renewal booking with payment success...');
+        
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
           start_date: new Date() // Update start date to payment success date
         });
+        
         console.log('Renewal booking updated successfully');
+        console.log('User ID remains:', booking.user);
       } else {
         // This is a new booking - create or find user
         console.log('New booking detected - creating/finding user for email:', booking.email);
@@ -1693,21 +1697,26 @@ exports.renewMembership = async (req, res) => {
        });
      }
 
-    // Create renewed booking
-    const renewalBooking = await MembershipBooking.create({
-      user: userId,
-      plan: newPlan._id,
-      batchId: batch._id,
-      name: existingBooking.name,
-      age: existingBooking.age,
-      email: existingBooking.email,
-      mobile_number: existingBooking.mobile_number,
-      gender: existingBooking.gender,
-      start_date: effectiveStartDate,
-      end_date: endDate,
-      billing_interval: interval, // THIS IS THE FIX
-      paymentResult: { status: 'initiated' }
-    });
+    // Update existing booking for renewal (don't create new booking)
+    console.log('Renewing membership for existing user:', userId);
+    console.log('Updating booking:', membershipBookingId);
+    
+    const renewalBooking = await MembershipBooking.findByIdAndUpdate(
+      membershipBookingId,
+      {
+        user: userId,
+        plan: newPlan._id,
+        batchId: batch._id,
+        start_date: effectiveStartDate,
+        end_date: endDate,
+        billing_interval: interval,
+        paymentResult: { status: 'initiated' }
+      },
+      { new: true }
+    );
+    
+    console.log('Renewal booking updated:', renewalBooking._id);
+    console.log('User ID set to:', renewalBooking.user);
 
     const merchantOrderId = renewalBooking._id.toString();
     // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
