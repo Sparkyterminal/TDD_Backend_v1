@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.SANDBOX
+const env = Env.PRODUCTION
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -918,8 +918,8 @@ exports.createBooking = async (req, res) => {
       });
   
       const merchantOrderId = booking._id.toString();
-      // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+      // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
@@ -1206,8 +1206,8 @@ const messagePayload = {
       }
 
       // Redirect to success page
-      // return res.redirect('https://www.thedancedistrict.in/payment-success');
-      return res.redirect(`http://localhost:5173/payment-success`);
+      return res.redirect('https://www.thedancedistrict.in/payment-success');
+      // return res.redirect(`http://localhost:5173/payment-success`);
 
 
     } else {
@@ -1216,8 +1216,8 @@ const messagePayload = {
         'paymentResult.status': 'FAILED',
         'paymentResult.phonepeResponse': response
       });
-      // return res.redirect('https://www.thedancedistrict.in/payment-failure');
-      return res.redirect(`http://localhost:5173/payment-failure`);
+      return res.redirect('https://www.thedancedistrict.in/payment-failure');
+      // return res.redirect(`http://localhost:5173/payment-failure`);
 
     }
   } catch (err) {
@@ -1731,8 +1731,8 @@ exports.renewMembership = async (req, res) => {
     console.log('User ID set to:', renewalBooking.user);
 
     const merchantOrderId = renewalBooking._id.toString();
-    // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-    const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+    // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
 
 
     // Build payment request

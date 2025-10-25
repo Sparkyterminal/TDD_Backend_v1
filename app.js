@@ -81,7 +81,7 @@ app.use(`${API_ROOT}demoClass`, demoClass);
 
 
 // Root route
-app.get('/', (req, res) => {
+app.get('/api/', (req, res) => {
     res.send('Hello from Node.js backend!');
 });
 
