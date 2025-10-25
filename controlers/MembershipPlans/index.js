@@ -1033,35 +1033,37 @@ exports.checkMembershipStatus = async (req, res) => {
       return res.status(404).send('Booking not found');
 
     if (status === 'COMPLETED') {
-      // Check if this is a renewal (booking already has a user)
-      if (booking.user) {
-        // This is a renewal - update the existing booking with payment details
+      // Check if user already exists (this indicates it's a renewal)
+      let user = await User.findOne({ 'email_data.email_id': booking.email });
+      
+      if (user) {
+        // This is a renewal - user already exists, just update the booking
+        console.log('Renewal detected - user already exists:', user._id);
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          user: user._id,
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
           start_date: new Date() // Update start date to payment success date
         });
       } else {
-        // This is a new booking - create or fetch user
-        let user = await User.findOne({ 'email_data.email_id': booking.email });
-        if (!user) {
-          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-          const lastName = rest.join(' ');
-          const password = `${firstName || 'User'}@123`;
-          const hashedPassword = await bcrypt.hash(password, 10);
-          user = await User.create({
-            first_name: firstName || 'User',
-            last_name: lastName || '',
-            media: [],
-            email_data: { temp_email_id: booking.email, is_validated: true },
-            phone_data: { phone_number: booking.mobile_number, is_validated: true },
-            role: 'USER',
-            password: hashedPassword,
-            is_active: true,
-            is_archived: false
-          });
-        }
+        // This is a new booking - create new user
+        console.log('New booking detected - creating new user');
+        const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+        const lastName = rest.join(' ');
+        const password = `${firstName || 'User'}@123`;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        user = await User.create({
+          first_name: firstName || 'User',
+          last_name: lastName || '',
+          media: [],
+          email_data: { temp_email_id: booking.email, is_validated: true },
+          phone_data: { phone_number: booking.mobile_number, is_validated: true },
+          role: 'USER',
+          password: hashedPassword,
+          is_active: true,
+          is_archived: false
+        });
 
         // Update booking with user and payment details
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
@@ -1634,11 +1636,6 @@ exports.renewMembership = async (req, res) => {
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
      // Calculate price without additional fees for renewals, convert to paise
-     console.log('Renewal Debug Info:');
-     console.log('- Interval:', interval);
-     console.log('- Interval lowercase:', interval.toLowerCase());
-     console.log('- Plan prices:', newPlan.prices);
-     
      // Map interval to correct price key
      let priceKey;
      switch (interval.toLowerCase()) {
@@ -1658,16 +1655,10 @@ exports.renewMembership = async (req, res) => {
          priceKey = 'monthly'; // fallback
      }
      
-     console.log('- Price key:', priceKey);
-     console.log('- Price for interval:', newPlan.prices?.[priceKey]);
-     console.log('- Monthly price fallback:', newPlan.prices?.monthly);
-     
      const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
-     console.log('- Final priceRaw:', priceRaw);
      
      // Ensure minimum amount for PhonePe (at least 1 paise = ₹0.01)
      if (priceRaw <= 0) {
-       console.log('ERROR: Price is 0 or negative:', priceRaw);
        return res.status(400).json({ 
          error: 'Invalid plan price. Plan must have a valid price for renewal.',
          debug: {
@@ -1679,11 +1670,9 @@ exports.renewMembership = async (req, res) => {
      }
      
      const priceInPaise = Math.round(priceRaw * 100);
-     console.log('- Price in paise:', priceInPaise);
      
      // Double check minimum amount
      if (priceInPaise < 1) {
-       console.log('ERROR: Price in paise is less than 1:', priceInPaise);
        return res.status(400).json({ 
          error: 'Payment amount too low. Minimum amount is ₹0.01',
          debug: {
