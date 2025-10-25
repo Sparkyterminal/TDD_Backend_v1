@@ -917,8 +917,8 @@ exports.createBooking = async (req, res) => {
       });
   
       const merchantOrderId = booking._id.toString();
-      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-      // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+      // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
@@ -1181,8 +1181,8 @@ const messagePayload = {
       }
 
       // Redirect to success page
-      return res.redirect('https://www.thedancedistrict.in/payment-success');
-      // return res.redirect(`http://localhost:5173/payment-success`);
+      // return res.redirect('https://www.thedancedistrict.in/payment-success');
+      return res.redirect(`http://localhost:5173/payment-success`);
 
 
     } else {
@@ -1191,8 +1191,8 @@ const messagePayload = {
         'paymentResult.status': 'FAILED',
         'paymentResult.phonepeResponse': response
       });
-      return res.redirect('https://www.thedancedistrict.in/payment-failure');
-      // return res.redirect(`http://localhost:5173/payment-failure`);
+      // return res.redirect('https://www.thedancedistrict.in/payment-failure');
+      return res.redirect(`http://localhost:5173/payment-failure`);
 
     }
   } catch (err) {
@@ -1634,8 +1634,64 @@ exports.renewMembership = async (req, res) => {
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
      // Calculate price without additional fees for renewals, convert to paise
-     const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
+     console.log('Renewal Debug Info:');
+     console.log('- Interval:', interval);
+     console.log('- Interval lowercase:', interval.toLowerCase());
+     console.log('- Plan prices:', newPlan.prices);
+     
+     // Map interval to correct price key
+     let priceKey;
+     switch (interval.toLowerCase()) {
+       case 'monthly':
+         priceKey = 'monthly';
+         break;
+       case '3_months':
+         priceKey = 'quarterly';
+         break;
+       case '6_months':
+         priceKey = 'half_yearly';
+         break;
+       case 'yearly':
+         priceKey = 'yearly';
+         break;
+       default:
+         priceKey = 'monthly'; // fallback
+     }
+     
+     console.log('- Price key:', priceKey);
+     console.log('- Price for interval:', newPlan.prices?.[priceKey]);
+     console.log('- Monthly price fallback:', newPlan.prices?.monthly);
+     
+     const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
+     console.log('- Final priceRaw:', priceRaw);
+     
+     // Ensure minimum amount for PhonePe (at least 1 paise = ₹0.01)
+     if (priceRaw <= 0) {
+       console.log('ERROR: Price is 0 or negative:', priceRaw);
+       return res.status(400).json({ 
+         error: 'Invalid plan price. Plan must have a valid price for renewal.',
+         debug: {
+           interval,
+           prices: newPlan.prices,
+           priceRaw
+         }
+       });
+     }
+     
      const priceInPaise = Math.round(priceRaw * 100);
+     console.log('- Price in paise:', priceInPaise);
+     
+     // Double check minimum amount
+     if (priceInPaise < 1) {
+       console.log('ERROR: Price in paise is less than 1:', priceInPaise);
+       return res.status(400).json({ 
+         error: 'Payment amount too low. Minimum amount is ₹0.01',
+         debug: {
+           priceRaw,
+           priceInPaise
+         }
+       });
+     }
 
     // Create renewed booking
     const renewalBooking = await MembershipBooking.create({
@@ -1654,8 +1710,8 @@ exports.renewMembership = async (req, res) => {
     });
 
     const merchantOrderId = renewalBooking._id.toString();
-    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-    // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+    // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+    const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
 
 
     // Build payment request
