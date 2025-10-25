@@ -1047,7 +1047,8 @@ exports.checkMembershipStatus = async (req, res) => {
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
-          start_date: new Date() // Update start date to payment success date
+          start_date: new Date(), // Update start date to payment success date
+          is_contacted: true // Mark as contacted after successful payment
         });
         
         console.log('Renewal booking updated successfully');
@@ -1084,7 +1085,8 @@ exports.checkMembershipStatus = async (req, res) => {
           user: user._id,
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
-          'paymentResult.phonepeResponse': response
+          'paymentResult.phonepeResponse': response,
+          is_contacted: true // Mark as contacted after successful payment
         });
         console.log('Booking updated successfully with user');
       }
