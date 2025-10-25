@@ -32,6 +32,17 @@ cron.schedule('01 01 * * *', () => {
     });
 });
 
+// Schedule renewal alerts daily at 10:00 AM
+cron.schedule('0 10 * * *', async () => {
+    console.log('Running daily renewal alerts...');
+    try {
+        const { sendDailyRenewalAlerts } = require('./cronJobs/renewalAlerts');
+        await sendDailyRenewalAlerts();
+    } catch (error) {
+        console.error('Error in renewal alerts cron job:', error);
+    }
+});
+
 // Enable CORS
 app.use(cors());
 
@@ -61,6 +72,7 @@ const workshopRoutes = require('./routes/Workshops');
 const classSessionRoutes = require('./routes/ClassSessions');
 const membershipPlanRoutes = require('./routes/MembershipPlans');
 const bulkMessageRoutes = require('./routes/BulkMessages');
+const renewalAlertRoutes = require('./routes/RenewalAlerts');
 const  rentalContact = require('./routes/RentalContact')
 const enquire =require('./routes/Enquire')
 const demoClass =require('./routes/DemoClass')
@@ -74,6 +86,7 @@ app.use(`${API_ROOT}workshop`, workshopRoutes);
 app.use(`${API_ROOT}class-session`, classSessionRoutes);
 app.use(`${API_ROOT}membership-plan`, membershipPlanRoutes);
 app.use(`${API_ROOT}bulk-messages`, bulkMessageRoutes);
+app.use(`${API_ROOT}renewal-alerts`, renewalAlertRoutes);
 app.use(`${API_ROOT}rental-contact`, rentalContact);
 app.use(`${API_ROOT}enquire`, enquire);
 app.use(`${API_ROOT}demoClass`, demoClass);
