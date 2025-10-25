@@ -1047,8 +1047,7 @@ exports.checkMembershipStatus = async (req, res) => {
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
-          start_date: new Date(), // Update start date to payment success date
-          is_contacted: true // Mark as contacted after successful payment
+          start_date: new Date() // Update start date to payment success date
         });
         
         console.log('Renewal booking updated successfully');
@@ -1085,8 +1084,7 @@ exports.checkMembershipStatus = async (req, res) => {
           user: user._id,
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
-          'paymentResult.phonepeResponse': response,
-          is_contacted: true // Mark as contacted after successful payment
+          'paymentResult.phonepeResponse': response
         });
         console.log('Booking updated successfully with user');
       }
@@ -1632,6 +1630,13 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Membership is not expired yet' });
     }
 
+    // Check if there's already a pending renewal (payment initiated but not completed)
+    if (existingBooking.paymentResult && existingBooking.paymentResult.status === 'initiated') {
+      return res.status(400).json({ 
+        error: 'A renewal payment is already in progress. Please complete the existing payment or wait for it to expire.' 
+      });
+    }
+
     // Fetch new plan and batch to validate existence and capacity
     const newPlan = await MembershipPlan.findById(planId).lean();
     if (!newPlan || !newPlan.is_active) {
@@ -1709,7 +1714,6 @@ exports.renewMembership = async (req, res) => {
         user: userId,
         plan: newPlan._id,
         batchId: batch._id,
-        start_date: effectiveStartDate,
         end_date: endDate,
         billing_interval: interval,
         paymentResult: { status: 'initiated' }
