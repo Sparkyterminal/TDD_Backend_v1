@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.PRODUCTION
+const env = Env.SANDBOX
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -1033,33 +1033,44 @@ exports.checkMembershipStatus = async (req, res) => {
       return res.status(404).send('Booking not found');
 
     if (status === 'COMPLETED') {
-      // User creation or fetch
-      let user = await User.findOne({ 'email_data.email_id': booking.email });
-      if (!user) {
-        const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-        const lastName = rest.join(' ');
-        const password = `${firstName || 'User'}@123`;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user = await User.create({
-          first_name: firstName || 'User',
-          last_name: lastName || '',
-          media: [],
-          email_data: { temp_email_id: booking.email, is_validated: true },
-          phone_data: { phone_number: booking.mobile_number, is_validated: true },
-          role: 'USER',
-          password: hashedPassword,
-          is_active: true,
-          is_archived: false
+      // Check if this is a renewal (booking already has a user)
+      if (booking.user) {
+        // This is a renewal - update the existing booking with payment details
+        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          'paymentResult.status': 'COMPLETED',
+          'paymentResult.paymentDate': new Date(),
+          'paymentResult.phonepeResponse': response,
+          start_date: new Date() // Update start date to payment success date
+        });
+      } else {
+        // This is a new booking - create or fetch user
+        let user = await User.findOne({ 'email_data.email_id': booking.email });
+        if (!user) {
+          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+          const lastName = rest.join(' ');
+          const password = `${firstName || 'User'}@123`;
+          const hashedPassword = await bcrypt.hash(password, 10);
+          user = await User.create({
+            first_name: firstName || 'User',
+            last_name: lastName || '',
+            media: [],
+            email_data: { temp_email_id: booking.email, is_validated: true },
+            phone_data: { phone_number: booking.mobile_number, is_validated: true },
+            role: 'USER',
+            password: hashedPassword,
+            is_active: true,
+            is_archived: false
+          });
+        }
+
+        // Update booking with user and payment details
+        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          user: user._id,
+          'paymentResult.status': 'COMPLETED',
+          'paymentResult.paymentDate': new Date(),
+          'paymentResult.phonepeResponse': response
         });
       }
-
-      // Update booking with user and payment details
-      await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-        user: user._id,
-        'paymentResult.status': 'COMPLETED',
-        'paymentResult.paymentDate': new Date(),
-        'paymentResult.phonepeResponse': response
-      });
 
       // Decrement batch capacity in plan
       const planDoc = await mongoose.model('membershipplan').findById(booking.plan._id);
@@ -1092,6 +1103,10 @@ const dancerName = booking.name || 'Participant';
 const membershipPlan = booking.plan?.name || 'Membership Plan';
 
 const billingIntervalMonthsMap = {
+  MONTHLY: 1,
+  '3_MONTHS': 3,
+  '6_MONTHS': 6,
+  YEARLY: 12,
   monthly: 1,
   quarterly: 3,
   half_yearly: 6,
@@ -1618,10 +1633,9 @@ exports.renewMembership = async (req, res) => {
     const endDate = new Date(effectiveStartDate);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-    // Calculate price
-    const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
-    const totalPrice = priceRaw + 500;
-    const priceInPaise = Math.round(totalPrice * 100);
+     // Calculate price without additional fees for renewals, convert to paise
+     const priceRaw = newPlan.prices?.[interval.toLowerCase()] || 0;
+     const priceInPaise = Math.round(priceRaw * 100);
 
     // Create renewed booking
     const renewalBooking = await MembershipBooking.create({
