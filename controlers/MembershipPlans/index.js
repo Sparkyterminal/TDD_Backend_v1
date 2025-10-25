@@ -1391,10 +1391,59 @@ exports.getMembershipBookings = async (req, res) => {
 
         const pipeline = [
             { $match: match },
-            { $lookup: { from: 'membershipplans', localField: 'plan', foreignField: '_id', as: 'plan' } },
-            { $unwind: { path: '$plan', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'user' } },
-            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+            
+            // Lookup user data with proper projection
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'user',
+                    foreignField: '_id',
+                    as: 'userData',
+                    pipeline: [
+                        {
+                            $project: {
+                                first_name: 1,
+                                last_name: 1,
+                                'email_data.temp_email_id': 1,
+                                'phone_data.phone_number': 1
+                            }
+                        }
+                    ]
+                }
+            },
+            
+            // Lookup plan data
+            {
+                $lookup: {
+                    from: 'membershipplans',
+                    localField: 'plan',
+                    foreignField: '_id',
+                    as: 'planData',
+                    pipeline: [
+                        {
+                            $project: {
+                                name: 1,
+                                price: 1,
+                                billing_interval: 1,
+                                plan_for: 1
+                            }
+                        }
+                    ]
+                }
+            },
+            
+            // Add fields to reshape the data
+            {
+                $addFields: {
+                    user: { $arrayElemAt: ['$userData', 0] },
+                    plan: { $arrayElemAt: ['$planData', 0] }
+                }
+            },
+            
+            // Remove the temporary arrays
+            {
+                $unset: ['userData', 'planData']
+            }
         ];
 
         if (q && typeof q === 'string' && q.trim()) {
@@ -1405,6 +1454,10 @@ exports.getMembershipBookings = async (req, res) => {
                         { name: regex },
                         { email: regex },
                         { mobile_number: regex },
+                        { 'user.first_name': regex },
+                        { 'user.last_name': regex },
+                        { 'user.email_data.temp_email_id': regex },
+                        { 'user.phone_data.phone_number': regex },
                         { 'plan.name': regex },
                     ]
                 }
@@ -1817,6 +1870,7 @@ exports.renewMembership = async (req, res) => {
 
 exports.getAllMembershipBookings = async (req, res) => {
   try {
+    console.log('getAllMembershipBookings invoked with query:', req.query);
     const { page = 1, limit = 10, status, planId, userId, batchId, search } = req.query;
     const skip = (page - 1) * limit;
 
@@ -1934,9 +1988,13 @@ exports.getAllMembershipBookings = async (req, res) => {
     });
 
     const result = await MembershipBooking.aggregate(pipeline);
+    console.log('Aggregation result:', JSON.stringify(result, null, 2));
     
     const bookings = result[0].bookings;
     const total = result[0].totalCount[0]?.count || 0;
+    
+    console.log('Bookings found:', bookings.length);
+    console.log('Sample booking user data:', bookings[0]?.user);
 
     // Calculate pagination info
     const totalPages = Math.ceil(total / limit);
