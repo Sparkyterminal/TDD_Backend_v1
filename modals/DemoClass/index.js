@@ -33,7 +33,10 @@ const demoBooking = new Schema(
             enum: ['Male', 'Female', 'Other'],
             required: true,
           },
-         
+          is_contacted:{
+            type: Boolean,
+            default: false
+        }
        
     },
     {
