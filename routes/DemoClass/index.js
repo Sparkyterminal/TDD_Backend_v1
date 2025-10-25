@@ -8,4 +8,7 @@ router.post('/demo-bookings', demoBookingController.createBooking);
 // GET /demo-bookings - get all bookings
 router.get('/demo-bookings', demoBookingController.getAllBookings);
 
+// PUT /demo-bookings/:id/contact-status - update contact status
+router.put('/demo-bookings/:id/contact-status', demoBookingController.updateContactStatus);
+
 module.exports = router;
