@@ -1391,59 +1391,10 @@ exports.getMembershipBookings = async (req, res) => {
 
         const pipeline = [
             { $match: match },
-            
-            // Lookup user data with proper projection
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'user',
-                    foreignField: '_id',
-                    as: 'userData',
-                    pipeline: [
-                        {
-                            $project: {
-                                first_name: 1,
-                                last_name: 1,
-                                'email_data.temp_email_id': 1,
-                                'phone_data.phone_number': 1
-                            }
-                        }
-                    ]
-                }
-            },
-            
-            // Lookup plan data
-            {
-                $lookup: {
-                    from: 'membershipplans',
-                    localField: 'plan',
-                    foreignField: '_id',
-                    as: 'planData',
-                    pipeline: [
-                        {
-                            $project: {
-                                name: 1,
-                                price: 1,
-                                billing_interval: 1,
-                                plan_for: 1
-                            }
-                        }
-                    ]
-                }
-            },
-            
-            // Add fields to reshape the data
-            {
-                $addFields: {
-                    user: { $arrayElemAt: ['$userData', 0] },
-                    plan: { $arrayElemAt: ['$planData', 0] }
-                }
-            },
-            
-            // Remove the temporary arrays
-            {
-                $unset: ['userData', 'planData']
-            }
+            { $lookup: { from: 'membershipplans', localField: 'plan', foreignField: '_id', as: 'plan' } },
+            { $unwind: { path: '$plan', preserveNullAndEmptyArrays: true } },
+            { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'user' } },
+            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         ];
 
         if (q && typeof q === 'string' && q.trim()) {
@@ -1454,10 +1405,6 @@ exports.getMembershipBookings = async (req, res) => {
                         { name: regex },
                         { email: regex },
                         { mobile_number: regex },
-                        { 'user.first_name': regex },
-                        { 'user.last_name': regex },
-                        { 'user.email_data.temp_email_id': regex },
-                        { 'user.phone_data.phone_number': regex },
                         { 'plan.name': regex },
                     ]
                 }
@@ -1868,9 +1815,169 @@ exports.renewMembership = async (req, res) => {
     }
   };
 
+// exports.getAllMembershipBookings = async (req, res) => {
+//   try {
+//     const { page = 1, limit = 10, status, planId, userId, batchId, search } = req.query;
+//     const skip = (page - 1) * limit;
+
+//     // Build match filter for aggregation
+//     const matchFilter = {};
+    
+//     if (status) {
+//       matchFilter['paymentResult.status'] = status;
+//     }
+    
+//     if (planId && isValidObjectId(planId)) {
+//       matchFilter.plan = new mongoose.Types.ObjectId(planId);
+//     }
+    
+//     if (userId && isValidObjectId(userId)) {
+//       matchFilter.user = new mongoose.Types.ObjectId(userId);
+//     }
+    
+//     if (batchId && isValidObjectId(batchId)) {
+//       matchFilter.batchId = new mongoose.Types.ObjectId(batchId);
+//     }
+
+//     // Aggregation pipeline
+//     const pipeline = [
+//       // Match stage
+//       { $match: matchFilter },
+      
+//       // Lookup user data
+//       {
+//         $lookup: {
+//           from: 'users',
+//           localField: 'user',
+//           foreignField: '_id',
+//           as: 'userData',
+//           pipeline: [
+//             {
+//               $project: {
+//                 first_name: 1,
+//                 last_name: 1,
+//                 'email_data.temp_email_id': 1,
+//                 'phone_data.phone_number': 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+      
+//       // Lookup plan data
+//       {
+//         $lookup: {
+//           from: 'membershipplans',
+//           localField: 'plan',
+//           foreignField: '_id',
+//           as: 'planData',
+//           pipeline: [
+//             {
+//               $project: {
+//                 name: 1,
+//                 price: 1,
+//                 billing_interval: 1,
+//                 plan_for: 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+      
+//       // Add fields to reshape the data
+//       {
+//         $addFields: {
+//           user: { $arrayElemAt: ['$userData', 0] },
+//           plan: { $arrayElemAt: ['$planData', 0] }
+//         }
+//       },
+      
+//       // Remove the temporary arrays
+//       {
+//         $unset: ['userData', 'planData']
+//       }
+//     ];
+
+//     // Add search functionality if search query is provided
+//     if (search && search.trim()) {
+//       const searchRegex = new RegExp(search.trim(), 'i');
+//       pipeline.push({
+//         $match: {
+//           $or: [
+//             { name: searchRegex },
+//             { email: searchRegex },
+//             { mobile_number: searchRegex },
+//             { 'user.first_name': searchRegex },
+//             { 'user.last_name': searchRegex },
+//             { 'user.email_data.temp_email_id': searchRegex },
+//             { 'user.phone_data.phone_number': searchRegex },
+//             { 'plan.name': searchRegex }
+//           ]
+//         }
+//       });
+//     }
+    
+//     // Add sorting
+//     pipeline.push({ $sort: { createdAt: -1 } });
+    
+//     // Add facet for pagination and total count
+//     pipeline.push({
+//       $facet: {
+//         bookings: [
+//           { $skip: skip },
+//           { $limit: parseInt(limit) }
+//         ],
+//         totalCount: [
+//           { $count: 'count' }
+//         ]
+//       }
+//     });
+
+//     const result = await MembershipBooking.aggregate(pipeline);
+    
+//     const bookings = result[0].bookings;
+//     const total = result[0].totalCount[0]?.count || 0;
+
+//     // Calculate pagination info
+//     const totalPages = Math.ceil(total / limit);
+//     const hasNextPage = page < totalPages;
+//     const hasPrevPage = page > 1;
+
+//     res.status(200).json({
+//       success: true,
+//       data: {
+//         bookings,
+//         pagination: {
+//           currentPage: parseInt(page),
+//           totalPages,
+//           totalItems: total,
+//           itemsPerPage: parseInt(limit),
+//           hasNextPage,
+//           hasPrevPage
+//         },
+//         filters: {
+//           status: status || null,
+//           planId: planId || null,
+//           userId: userId || null,
+//           batchId: batchId || null,
+//           search: search || null
+//         }
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching membership bookings:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching membership bookings',
+//       error: error.message
+//     });
+//   }
+// };
+
+
 exports.getAllMembershipBookings = async (req, res) => {
   try {
-    console.log('getAllMembershipBookings invoked with query:', req.query);
     const { page = 1, limit = 10, status, planId, userId, batchId, search } = req.query;
     const skip = (page - 1) * limit;
 
@@ -1895,10 +2002,10 @@ exports.getAllMembershipBookings = async (req, res) => {
 
     // Aggregation pipeline
     const pipeline = [
-      // Match stage
+      // Match stage - initial filters
       { $match: matchFilter },
       
-      // Lookup user data
+      // Lookup user data FIRST
       {
         $lookup: {
           from: 'users',
@@ -1910,8 +2017,8 @@ exports.getAllMembershipBookings = async (req, res) => {
               $project: {
                 first_name: 1,
                 last_name: 1,
-                'email_data.temp_email_id': 1,
-                'phone_data.phone_number': 1
+                email_data: 1,
+                phone_data: 1
               }
             }
           ]
@@ -1938,21 +2045,40 @@ exports.getAllMembershipBookings = async (req, res) => {
         }
       },
       
+      // Lookup batch data (optional, if you want to show batch info)
+      {
+        $lookup: {
+          from: 'batches', // or whatever your batch collection name is
+          localField: 'batchId',
+          foreignField: '_id',
+          as: 'batchData',
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+                timings: 1
+              }
+            }
+          ]
+        }
+      },
+      
       // Add fields to reshape the data
       {
         $addFields: {
-          user: { $arrayElemAt: ['$userData', 0] },
-          plan: { $arrayElemAt: ['$planData', 0] }
+          userInfo: { $arrayElemAt: ['$userData', 0] },
+          planInfo: { $arrayElemAt: ['$planData', 0] },
+          batchInfo: { $arrayElemAt: ['$batchData', 0] }
         }
       },
       
       // Remove the temporary arrays
       {
-        $unset: ['userData', 'planData']
+        $unset: ['userData', 'planData', 'batchData']
       }
     ];
 
-    // Add search functionality if search query is provided
+    // Add search functionality AFTER lookups
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
       pipeline.push({
@@ -1961,11 +2087,12 @@ exports.getAllMembershipBookings = async (req, res) => {
             { name: searchRegex },
             { email: searchRegex },
             { mobile_number: searchRegex },
-            { 'user.first_name': searchRegex },
-            { 'user.last_name': searchRegex },
-            { 'user.email_data.temp_email_id': searchRegex },
-            { 'user.phone_data.phone_number': searchRegex },
-            { 'plan.name': searchRegex }
+            { 'userInfo.first_name': searchRegex },
+            { 'userInfo.last_name': searchRegex },
+            { 'userInfo.email_data.temp_email_id': searchRegex },
+            { 'userInfo.phone_data.phone_number': searchRegex },
+            { 'planInfo.name': searchRegex },
+            { 'batchInfo.name': searchRegex }
           ]
         }
       });
@@ -1988,13 +2115,9 @@ exports.getAllMembershipBookings = async (req, res) => {
     });
 
     const result = await MembershipBooking.aggregate(pipeline);
-    console.log('Aggregation result:', JSON.stringify(result, null, 2));
     
     const bookings = result[0].bookings;
     const total = result[0].totalCount[0]?.count || 0;
-    
-    console.log('Bookings found:', bookings.length);
-    console.log('Sample booking user data:', bookings[0]?.user);
 
     // Calculate pagination info
     const totalPages = Math.ceil(total / limit);
