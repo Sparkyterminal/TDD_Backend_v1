@@ -1043,11 +1043,19 @@ exports.checkMembershipStatus = async (req, res) => {
         console.log('Renewal detected - updating existing user:', booking.user);
         console.log('Updating renewal booking with payment success...');
         
+        // Calculate new end date based on billing interval
+        const billingInterval = booking.billing_interval;
+        const monthsToAdd = INTERVAL_TO_MONTHS[billingInterval] || 1;
+        const newStartDate = new Date();
+        const newEndDate = new Date(newStartDate);
+        newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
+        
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response,
-          start_date: new Date() // Update start date to payment success date
+          start_date: newStartDate, // Update start date to payment success date
+          end_date: newEndDate // Update end date based on billing interval
         });
         
         console.log('Renewal booking updated successfully');
@@ -1631,10 +1639,9 @@ exports.renewMembership = async (req, res) => {
     }
 
     // Check if there's already a pending renewal (payment initiated but not completed)
+    // Allow renewal even if there's a pending payment - user might want to change plans or retry
     if (existingBooking.paymentResult && existingBooking.paymentResult.status === 'initiated') {
-      return res.status(400).json({ 
-        error: 'A renewal payment is already in progress. Please complete the existing payment or wait for it to expire.' 
-      });
+      console.log('Found existing initiated payment, allowing renewal to proceed...');
     }
 
     // Fetch new plan and batch to validate existence and capacity
@@ -1714,7 +1721,6 @@ exports.renewMembership = async (req, res) => {
         user: userId,
         plan: newPlan._id,
         batchId: batch._id,
-        end_date: endDate,
         billing_interval: interval,
         paymentResult: { status: 'initiated' }
       },
