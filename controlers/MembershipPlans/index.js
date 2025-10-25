@@ -914,6 +914,7 @@ exports.createBooking = async (req, res) => {
         mobile_number,
         gender,
         paymentResult: paymentResult || { status: 'initiated' }
+        // Note: user field will be set after payment success in checkMembershipStatus
       });
   
       const merchantOrderId = booking._id.toString();
@@ -1033,6 +1034,9 @@ exports.checkMembershipStatus = async (req, res) => {
       return res.status(404).send('Booking not found');
 
     if (status === 'COMPLETED') {
+      console.log('Payment completed for booking:', merchantOrderId);
+      console.log('Booking user field:', booking.user);
+      
       // Check if this is a renewal by checking if booking already has a user
       if (booking.user) {
         // This is a renewal - user already exists, just update the booking
@@ -1043,18 +1047,22 @@ exports.checkMembershipStatus = async (req, res) => {
           'paymentResult.phonepeResponse': response,
           start_date: new Date() // Update start date to payment success date
         });
+        console.log('Renewal booking updated successfully');
       } else {
         // This is a new booking - create or find user
-        console.log('New booking detected - creating/finding user');
+        console.log('New booking detected - creating/finding user for email:', booking.email);
         let user = await User.findOne({ 'email_data.email_id': booking.email });
+        console.log('Found existing user:', user ? user._id : 'None');
+        
         if (!user) {
+          console.log('Creating new user for:', booking.email);
           const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
           const lastName = rest.join(' ');
           const password = `${firstName || 'User'}@123`;
           const hashedPassword = await bcrypt.hash(password, 10);
           user = await User.create({
             first_name: firstName || 'User',
-            last_name: lastName || '',
+            last_name: lastName || 'User', // Set default if empty
             media: [],
             email_data: { temp_email_id: booking.email, is_validated: true },
             phone_data: { phone_number: booking.mobile_number, is_validated: true },
@@ -1063,15 +1071,18 @@ exports.checkMembershipStatus = async (req, res) => {
             is_active: true,
             is_archived: false
           });
+          console.log('New user created:', user._id);
         }
 
         // Update booking with user and payment details
+        console.log('Updating booking with user:', user._id);
         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
           user: user._id,
           'paymentResult.status': 'COMPLETED',
           'paymentResult.paymentDate': new Date(),
           'paymentResult.phonepeResponse': response
         });
+        console.log('Booking updated successfully with user');
       }
 
       // Decrement batch capacity in plan
@@ -1843,9 +1854,10 @@ exports.getAllMembershipBookings = async (req, res) => {
           pipeline: [
             {
               $project: {
-                name: 1,
-                email: 1,
-                mobile_number: 1
+                first_name: 1,
+                last_name: 1,
+                'email_data.temp_email_id': 1,
+                'phone_data.phone_number': 1
               }
             }
           ]
@@ -1895,9 +1907,10 @@ exports.getAllMembershipBookings = async (req, res) => {
             { name: searchRegex },
             { email: searchRegex },
             { mobile_number: searchRegex },
-            { 'user.name': searchRegex },
-            { 'user.email': searchRegex },
-            { 'user.mobile_number': searchRegex },
+            { 'user.first_name': searchRegex },
+            { 'user.last_name': searchRegex },
+            { 'user.email_data.temp_email_id': searchRegex },
+            { 'user.phone_data.phone_number': searchRegex },
             { 'plan.name': searchRegex }
           ]
         }
@@ -1988,9 +2001,10 @@ exports.getMembershipBookingById = async (req, res) => {
           pipeline: [
             {
               $project: {
-                name: 1,
-                email: 1,
-                mobile_number: 1
+                first_name: 1,
+                last_name: 1,
+                'email_data.temp_email_id': 1,
+                'phone_data.phone_number': 1
               }
             }
           ]
@@ -2050,6 +2064,108 @@ exports.getMembershipBookingById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching membership booking',
+      error: error.message
+    });
+  }
+};
+
+// Bulk create users for existing bookings without users
+exports.createUsersForExistingBookings = async (req, res) => {
+  try {
+    console.log('Starting bulk user creation for existing bookings...');
+
+    // Find all bookings without user field
+    const bookingsWithoutUser = await MembershipBooking.find({
+      user: { $exists: false }
+    }).lean();
+
+    console.log(`Found ${bookingsWithoutUser.length} bookings without users`);
+
+    let createdUsers = 0;
+    let existingUsers = 0;
+    let errors = 0;
+    const errorDetails = [];
+
+    for (const booking of bookingsWithoutUser) {
+      try {
+        console.log(`Processing booking: ${booking._id} for ${booking.email}`);
+
+        // Create new user for each booking based on name only
+        const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+        const lastName = rest.join(' ') || 'User';
+        
+        // Create unique email based on name and booking ID
+        const uniqueEmail = `${firstName.toLowerCase()}_${booking._id}@temp.com`;
+        
+        // Create password based on name
+        const password = `${firstName || 'User'}@123`;
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = await User.create({
+          first_name: firstName || 'User',
+          last_name: lastName,
+          media: [],
+          email_data: { temp_email_id: uniqueEmail, is_validated: true },
+          phone_data: { phone_number: booking.mobile_number, is_validated: true },
+          role: 'USER',
+          password: hashedPassword,
+          is_active: true,
+          is_archived: false
+        });
+
+        console.log(`  ✓ Created new user: ${user._id} (${firstName} ${lastName})`);
+        createdUsers++;
+
+        // Update booking with user reference
+        await MembershipBooking.findByIdAndUpdate(booking._id, {
+          user: user._id
+        });
+
+        console.log(`  ✓ Updated booking ${booking._id} with user ${user._id}`);
+
+      } catch (error) {
+        console.error(`  ✗ Error processing booking ${booking._id}:`, error.message);
+        errors++;
+        errorDetails.push({
+          bookingId: booking._id,
+          email: booking.email,
+          error: error.message
+        });
+      }
+    }
+
+    // Verify results
+    const remainingBookingsWithoutUser = await MembershipBooking.countDocuments({
+      user: { $exists: false }
+    });
+
+    const summary = {
+      totalBookingsProcessed: bookingsWithoutUser.length,
+      newUsersCreated: createdUsers,
+      existingUsersFound: existingUsers,
+      errors: errors,
+      remainingBookingsWithoutUser: remainingBookingsWithoutUser,
+      errorDetails: errorDetails
+    };
+
+    console.log('\n=== SUMMARY ===');
+    console.log(`Total bookings processed: ${summary.totalBookingsProcessed}`);
+    console.log(`New users created: ${summary.newUsersCreated}`);
+    console.log(`Existing users found: ${summary.existingUsersFound}`);
+    console.log(`Errors: ${summary.errors}`);
+    console.log(`Remaining bookings without users: ${summary.remainingBookingsWithoutUser}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Bulk user creation completed',
+      data: summary
+    });
+
+  } catch (error) {
+    console.error('Bulk user creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error in bulk user creation',
       error: error.message
     });
   }

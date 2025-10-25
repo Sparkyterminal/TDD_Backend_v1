@@ -87,7 +87,7 @@ app.get('/', (req, res) => {
 
 // Database connection and server startup
 try {
-    const DB_URL = process.env.DANCE_DISTRICT_DB_URL || "mongodb+srv://naveengc3005_db_user:waTdC4tnosVOJCcO@thedancedistrict.41vcz15.mongodb.net/dance_district";
+    const DB_URL = process.env.DANCE_DISTRICT_DB_URL || "mongodb://127.0.0.1:27017/dance_district";
     const DB_PORT = process.env.DANCE_DISTRICT_PORT || PORT;
 
     mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
