@@ -773,3 +773,221 @@ exports.getConfirmedBookings = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
+exports.createManualBooking = async (req, res) => {
+  try {
+    const { 
+      workshopId, 
+      batchIds, 
+      name, 
+      age, 
+      email, 
+      mobile_number, 
+      gender, 
+      payment_status,
+      price_charged
+    } = req.body;
+
+    // Validate required fields
+    if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Workshop ID, name, age, email, mobile number, and gender are required' 
+      });
+    }
+
+    // Validate IDs
+    if (!isValidObjectId(workshopId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid workshop ID' 
+      });
+    }
+
+    // Validate workshop exists
+    const workshop = await Workshop.findById(workshopId);
+    if (!workshop) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Workshop not found' 
+      });
+    }
+
+    // Validate batches exist in workshop (if provided)
+    if (batchIds && Array.isArray(batchIds) && batchIds.length > 0) {
+      for (const batchId of batchIds) {
+        if (!isValidObjectId(batchId)) {
+          return res.status(400).json({ 
+            success: false,
+            error: 'Invalid batch ID' 
+          });
+        }
+        
+        const batch = workshop.batches.find(b => b._id.toString() === batchId);
+        if (!batch) {
+          return res.status(400).json({ 
+            success: false,
+            error: 'Selected batch not found in the workshop' 
+          });
+        }
+
+        // Check capacity if batch has capacity limit
+        if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
+          return res.status(400).json({ 
+            success: false,
+            error: 'Selected batch is full' 
+          });
+        }
+      }
+    } else {
+      // If no batchIds provided, default to first available batch
+      if (workshop.batches && workshop.batches.length > 0) {
+        batchIds = [workshop.batches[0]._id];
+      } else {
+        return res.status(400).json({ 
+          success: false,
+          error: 'No batches available for this workshop' 
+        });
+      }
+    }
+
+    // Validate payment status
+    const validPaymentStatuses = ['initiated', 'COMPLETED', 'FAILED', 'PENDING', 'CONFIRMED'];
+    if (payment_status && !validPaymentStatuses.includes(payment_status)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid payment status. Must be one of: initiated, COMPLETED, FAILED, PENDING, CONFIRMED' 
+      });
+    }
+
+    // Determine pricing tier
+    const pricingDetails = [];
+    for (const batchId of batchIds) {
+      const batchObjId = new mongoose.Types.ObjectId(batchId);
+      const batch = workshop.batches.find(b => b._id.toString() === batchId);
+      
+      if (!batch) continue;
+
+      const earlyLimit = batch.pricing?.early_bird?.capacity_limit ?? 0;
+      const earlyCount = await Booking.countDocuments({ 
+        workshop: workshopId, 
+        'batch_ids': { $in: [batchId] }, 
+        'pricing_details.pricing_tier': 'EARLY_BIRD' 
+      });
+
+      let tier = 'REGULAR';
+      if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
+        tier = 'EARLY_BIRD';
+      } else if (batch.pricing?.regular?.price != null) {
+        tier = 'REGULAR';
+        price = batch.pricing.regular.price;
+      } else if (batch.pricing?.on_the_spot?.price != null) {
+        tier = 'ON_THE_SPOT';
+        price = batch.pricing.on_the_spot.price;
+      }
+
+      let price = 0;
+      if (tier === 'EARLY_BIRD') {
+        price = batch.pricing.early_bird.price;
+      } else if (tier === 'REGULAR') {
+        price = batch.pricing.regular.price;
+      } else if (tier === 'ON_THE_SPOT') {
+        price = batch.pricing.on_the_spot.price;
+      }
+
+      pricingDetails.push({ 
+        batch_id: batch._id, 
+        pricing_tier: tier, 
+        price 
+      });
+    }
+
+    // Calculate total price (add 50 for convenience fee)
+    const calculatedPrice = pricingDetails.reduce((sum, detail) => sum + detail.price, 0) + 50;
+    const finalPrice = price_charged || calculatedPrice;
+
+    // Create the booking
+    const bookingData = {
+      workshop: workshopId,
+      batch_ids: batchIds,
+      name,
+      age,
+      email,
+      mobile_number,
+      gender,
+      pricing_details: pricingDetails,
+      price_charged: finalPrice,
+      status: payment_status === 'COMPLETED' || payment_status === 'CONFIRMED' ? 'CONFIRMED' : 'INITIATED',
+      paymentResult: {
+        status: payment_status || 'initiated'
+      }
+    };
+
+    const newBooking = await Booking.create(bookingData);
+
+    // Decrement batch capacity if payment is COMPLETED/CONFIRMED
+    if (payment_status === 'COMPLETED' || payment_status === 'CONFIRMED') {
+      for (const batchId of batchIds) {
+        const bIdObj = new mongoose.Types.ObjectId(batchId);
+        await Workshop.findOneAndUpdate(
+          { _id: workshopId },
+          {
+            $inc: {
+              'batches.$[batchCapacity].capacity': -1,
+              'batches.$[batchEarlyBird].pricing.early_bird.capacity_limit': -1
+            }
+          },
+          {
+            arrayFilters: [
+              { 'batchCapacity._id': bIdObj, 'batchCapacity.capacity': { $gt: 0 } },
+              { 'batchEarlyBird._id': bIdObj, 'batchEarlyBird.pricing.early_bird.capacity_limit': { $gt: 0 } }
+            ]
+          }
+        );
+      }
+
+      // Send email notification for manual booking
+      try {
+        const { sendWorkshopBookingConfirmationEmail } = require('../../utils/sendEmail');
+        const workshopTitle = workshop.title || 'Dance Workshop';
+        const date = workshop.date ? new Date(workshop.date).toLocaleDateString('en-GB') : 'TBA';
+        const batch = workshop.batches.find(b => batchIds.includes(b._id.toString()));
+        const time = batch?.start_time 
+          ? new Date(batch.start_time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) 
+          : 'TBA';
+        const location = workshop.location || 'The Dance District Studio, Gubalaala Main Road Bengaluru';
+        
+        await sendWorkshopBookingConfirmationEmail(
+          email,
+          name,
+          workshopTitle,
+          date,
+          time,
+          location
+        );
+        console.log('Workshop booking confirmation email sent successfully for manual booking');
+      } catch (emailError) {
+        console.error('Failed to send workshop booking email:', emailError);
+      }
+    }
+
+    // Populate the response
+    const populatedBooking = await Booking.findById(newBooking._id)
+      .populate('workshop', 'title description date media')
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      message: 'Workshop booking created successfully',
+      data: populatedBooking
+    });
+
+  } catch (error) {
+    console.error('Error creating manual booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating manual booking',
+      error: error.message
+    });
+  }
+};
