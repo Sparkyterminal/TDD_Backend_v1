@@ -178,7 +178,7 @@ async function sendRenewalWhatsAppMessage(booking) {
     // Contact number
     const contactNumber = '+91 9876543210'; // Replace with your contact number
 
-    // Prepare WhatsApp template message
+    // Prepare WhatsApp template message (using correct format)
     const messagePayload = {
       integrated_number: WHATSAPP_NUMBER,
       content_type: "template",
@@ -186,9 +186,9 @@ async function sendRenewalWhatsAppMessage(booking) {
         messaging_product: "whatsapp",
         type: "template",
         template: {
-          name: "renewal_alert", // Your template name
+          name: "renewal", // Your template name
           language: {
-            code: "en_GB",
+            code: "en",
             policy: "deterministic"
           },
           namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
@@ -196,30 +196,22 @@ async function sendRenewalWhatsAppMessage(booking) {
             {
               to: [mobileNumber],
               components: {
-                body_1: [
-                  {
-                    type: "text",
-                    text: booking.name || 'Member'
-                  }
-                ],
-                body_2: [
-                  {
-                    type: "text",
-                    text: formattedEndDate
-                  }
-                ],
-                body_3: [
-                  {
-                    type: "text",
-                    text: renewalLink
-                  }
-                ],
-                body_4: [
-                  {
-                    type: "text",
-                    text: contactNumber
-                  }
-                ]
+                body_1: {
+                  type: "text",
+                  value: booking.name || 'Member' // {{1}}
+                },
+                body_2: {
+                  type: "text",
+                  value: formattedEndDate // {{2}}
+                },
+                body_3: {
+                  type: "text",
+                  value: renewalLink // {{3}}
+                },
+                body_4: {
+                  type: "text",
+                  value: contactNumber // {{4}}
+                }
               }
             }
           ]

@@ -6,7 +6,7 @@ const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sd
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.PRODUCTION
+const env = Env.SANDBOX
 
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 function isValidObjectId(id) {
@@ -712,6 +712,22 @@ const time = batch?.start_time
         }
       } else {
         console.log('No valid mobile number available for WhatsApp message');
+      }
+
+      // Send confirmation email for workshop booking
+      try {
+        const { sendWorkshopBookingConfirmationEmail } = require('../../utils/sendEmail');
+        await sendWorkshopBookingConfirmationEmail(
+          updatedBooking.email,
+          dancerName,
+          workshopTitle,
+          date,
+          time,
+          location
+        );
+        console.log('Workshop booking confirmation email sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send workshop booking email:', emailError);
       }
 
       return res.redirect(`https://www.thedancedistrict.in/payment-success`);

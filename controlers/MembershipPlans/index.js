@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.PRODUCTION
+const env = Env.SANDBOX
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -1060,6 +1060,27 @@ exports.checkMembershipStatus = async (req, res) => {
         
         console.log('Renewal booking updated successfully');
         console.log('User ID remains:', booking.user);
+
+        // Send renewal confirmation email
+        try {
+          const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
+          const planName = booking.plan?.name || 'Membership Plan';
+          const billingInterval = booking.billing_interval || 'MONTHLY';
+          const formattedNewStart = newStartDate.toLocaleDateString();
+          const formattedNewEnd = newEndDate.toLocaleDateString();
+          
+          await sendMembershipRenewalConfirmationEmail(
+            booking.email,
+            booking.name,
+            planName,
+            billingInterval,
+            formattedNewStart,
+            formattedNewEnd
+          );
+          console.log('Membership renewal confirmation email sent successfully');
+        } catch (emailError) {
+          console.error('Failed to send renewal confirmation email:', emailError);
+        }
       } else {
         // This is a new booking - create or find user
         console.log('New booking detected - creating/finding user for email:', booking.email);
@@ -1095,6 +1116,27 @@ exports.checkMembershipStatus = async (req, res) => {
           'paymentResult.phonepeResponse': response
         });
         console.log('Booking updated successfully with user');
+
+        // Send membership booking confirmation email
+        try {
+          const { sendMembershipBookingConfirmationEmail } = require('../utils/sendEmail');
+          const planName = booking.plan?.name || 'Membership Plan';
+          const billingInterval = booking.billing_interval || 'MONTHLY';
+          const startDate = booking.start_date?.toLocaleDateString() || new Date().toLocaleDateString();
+          const endDate = booking.end_date?.toLocaleDateString() || new Date().toLocaleDateString();
+          
+          await sendMembershipBookingConfirmationEmail(
+            booking.email,
+            booking.name,
+            planName,
+            billingInterval,
+            startDate,
+            endDate
+          );
+          console.log('Membership booking confirmation email sent successfully');
+        } catch (emailError) {
+          console.error('Failed to send membership booking email:', emailError);
+        }
       }
 
       // Decrement batch capacity in plan
