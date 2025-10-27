@@ -1803,11 +1803,12 @@ exports.renewMembership = async (req, res) => {
       { new: true }
     );
     
-    console.log('Renewal booking updated:', renewalBooking._id);
     console.log('User ID set to:', renewalBooking.user);
-
+    
     // const merchantOrderId = renewalBooking._id.toString();
-    const merchantOrderId = `ORDER_${Date.now()}_${userId}`;
+    // const merchantOrderId = `ORDER_${Date.now()}_${userId}`;
+    const merchantOrderId = renewalBooking._id.toString();
+    console.log('merchantOrderId', merchantOrderId);
     const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
     // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
 
