@@ -938,7 +938,199 @@ exports.createBooking = async (req, res) => {
     }
   };
 
-// Check payment status and update booking, user, and batch capacity
+  exports.checkMembershipStatus = async (req, res) => {
+    console.log('checkMembershipStatus invoked with query:', req.query);
+    try {
+      // Get merchantOrderId from query
+      const { merchantOrderId } = req.query;
+      if (!merchantOrderId) return res.status(400).send('merchantOrderId is required');
+  
+      // Extract underlying bookingId (ObjectId) from merchantOrderId
+      // Supports both raw ObjectId and formats like: ORDER_<timestamp>_<ObjectId>
+      let bookingId = merchantOrderId;
+      if (!isValidObjectId(merchantOrderId)) {
+        // Try to extract final 24-hex segment
+        const parts = merchantOrderId.split('_');
+        bookingId = parts[parts.length - 1];
+      }
+  
+      if (!isValidObjectId(bookingId)) {
+        return res.status(400).send('Invalid booking ID parsed from merchantOrderId');
+      }
+  
+      // Query payment status from PhonePe using the full merchantOrderId
+      let status = 'unknown';
+      let phonepeResponse = {};
+      try {
+        const response = await client.getOrderStatus(merchantOrderId);
+        status = response.state;
+        phonepeResponse = response;
+      } catch (gatewayErr) {
+        console.error('PhonePe gateway status error:', gatewayErr);
+        // Proceed to show database result anyway
+      }
+  
+      const booking = await MembershipBooking.findById(bookingId).populate('plan').lean();
+      if (!booking) return res.status(404).send('Booking not found');
+  
+      // Payment Success Flow
+      if (status === 'COMPLETED') {
+        // Renewal: booking.user exists
+        if (booking.user) {
+          // Calculate new end date
+          const monthsToAdd = INTERVAL_TO_MONTHS[booking.billing_interval] || 1;
+          const newStartDate = new Date();
+          const newEndDate = new Date(newStartDate);
+          newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
+  
+          await MembershipBooking.findByIdAndUpdate(bookingId, {
+            'paymentResult.status': 'COMPLETED',
+            'paymentResult.paymentDate': new Date(),
+            'paymentResult.phonepeResponse': phonepeResponse,
+            start_date: newStartDate,
+            end_date: newEndDate
+          });
+  
+          // Email (try/catch)
+          try {
+            const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
+            const planName = booking.plan?.name || 'Membership Plan';
+            const billingInterval = booking.billing_interval || 'MONTHLY';
+            await sendMembershipRenewalConfirmationEmail(
+              booking.email,
+              booking.name,
+              planName,
+              billingInterval,
+              newStartDate.toLocaleDateString(),
+              newEndDate.toLocaleDateString()
+            );
+          } catch (e) {
+            console.error('Email error:', e);
+          }
+  
+        } else {
+          // New Booking (no user)
+          let user = await User.findOne({ 'email_data.email_id': booking.email });
+          if (!user) {
+            const [firstName, ...rest] = (booking.name || 'User').trim().split(/\s+/);
+            const lastName = rest.join(' ');
+            const password = `${firstName || 'User'}@123`;
+            const hashedPassword = await bcrypt.hash(password, 10);
+            user = await User.create({
+              first_name: firstName || 'User',
+              last_name: lastName || 'User',
+              media: [],
+              email_data: { temp_email_id: booking.email, is_validated: true },
+              phone_data: { phone_number: booking.mobile_number, is_validated: true },
+              role: 'USER',
+              password: hashedPassword,
+              is_active: true,
+              is_archived: false
+            });
+          }
+          await MembershipBooking.findByIdAndUpdate(bookingId, {
+            user: user._id,
+            'paymentResult.status': 'COMPLETED',
+            'paymentResult.paymentDate': new Date(),
+            'paymentResult.phonepeResponse': phonepeResponse
+          });
+  
+          try {
+            const { sendMembershipBookingConfirmationEmail } = require('../utils/sendEmail');
+            const planName = booking.plan?.name || 'Membership Plan';
+            const billingInterval = booking.billing_interval || 'MONTHLY';
+            await sendMembershipBookingConfirmationEmail(
+              booking.email,
+              booking.name,
+              planName,
+              billingInterval,
+              booking.start_date?.toLocaleDateString() || new Date().toLocaleDateString(),
+              booking.end_date?.toLocaleDateString() || new Date().toLocaleDateString()
+            );
+          } catch (e) {
+            console.error('Email error:', e);
+          }
+        }
+  
+        // Decrement batch capacity
+        const planDoc = await mongoose.model('membershipplan').findById(booking.plan._id);
+        if (planDoc && planDoc.batches && booking.batchId) {
+          planDoc.batches = planDoc.batches.map(batch =>
+            batch._id.toString() === booking.batchId.toString() && batch.capacity !== undefined && batch.capacity > 0
+              ? { ...batch, capacity: batch.capacity - 1 }
+              : batch
+          );
+          await planDoc.save();
+        }
+  
+        // WhatsApp notification (try/catch block)
+        try {
+          const mobileNumber = booking.mobile_number?.toString().replace(/\D/g, '');
+          const formattedNumber = (mobileNumber.length === 10) ? `+91${mobileNumber}` : mobileNumber;
+          const dancerName = booking.name || 'Participant';
+          const membershipPlan = booking.plan?.name || 'Membership Plan';
+  
+          const billingIntervalMonthsMap = {
+            MONTHLY: 1, '3_MONTHS': 3, '6_MONTHS': 6, YEARLY: 12,
+            monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12,
+          };
+  
+          const batch = booking.plan.batches.find(b => b._id.toString() === booking.batchId.toString());
+          const batchStartDate = batch?.startDate || booking.start_date || new Date();
+          const monthsToAdd = billingIntervalMonthsMap[booking.billing_interval] || 1;
+          const startDate = new Date(batchStartDate);
+          const expiryDate = new Date(startDate); expiryDate.setMonth(expiryDate.getMonth() + monthsToAdd);
+  
+          const formattedStartDate = startDate.toLocaleDateString('en-GB');
+          const formattedExpiryDate = expiryDate.toLocaleDateString('en-GB');
+          const contactNo = '+91 8073139244';
+  
+          const messagePayload = {
+            integrated_number: process.env.WHATSAPP_NUMBER || '15558600955',
+            content_type: "template",
+            payload: {
+              messaging_product: "whatsapp",
+              type: "template",
+              template: {
+                name: "membership_confirmation",
+                language: { code: "en", policy: "deterministic" },
+                namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
+                to_and_components: [{
+                  to: [formattedNumber],
+                  components: {
+                    body_1: { type: "text", value: dancerName },
+                    body_2: { type: "text", value: membershipPlan },
+                    body_3: { type: "text", value: formattedStartDate },
+                    body_4: { type: "text", value: formattedExpiryDate },
+                    body_5: { type: "text", value: contactNo }
+                  }
+                }]
+              }
+            }
+          };
+          await axios.post('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/', messagePayload, {
+            headers: { authkey: process.env.MSG91_AUTHKEY, 'Content-Type': 'application/json', Accept: 'application/json' }
+          });
+        } catch (whatsappError) {
+          console.error('Whatsapp error:', whatsappError);
+        }
+  
+        // Finally: Redirect to payment-success page
+        return res.redirect('https://www.thedancedistrict.in/payment-success');
+      } else {
+        // Payment failure logic
+        await MembershipBooking.findByIdAndUpdate(bookingId, {
+          'paymentResult.status': 'FAILED',
+          'paymentResult.phonepeResponse': phonepeResponse
+        });
+        return res.redirect('https://www.thedancedistrict.in/payment-failure');
+      }
+    } catch (err) {
+      console.error('checkMembershipStatus:', err);
+      return res.status(500).send('Internal server error');
+    }
+  }
+
 
 // exports.checkMembershipStatus = async (req, res) => {
 //   console.log('checkMembershipStatus invoked with query:', req.query);
@@ -947,47 +1139,124 @@ exports.createBooking = async (req, res) => {
 //     if (!merchantOrderId)
 //       return res.status(400).send('merchantOrderId is required');
 
+//     // Get payment status from PhonePe
 //     const response = await client.getOrderStatus(merchantOrderId);
 //     const status = response.state;
 
-//     const booking = await MembershipBooking.findById(merchantOrderId);
+//     const booking = await MembershipBooking.findById(merchantOrderId).populate('plan').lean();
 //     if (!booking)
 //       return res.status(404).send('Booking not found');
 
 //     if (status === 'COMPLETED') {
-//       // User management
-//       let user = await User.findOne({ 'email_data.email_id': booking.email });
-//       if (!user) {
-//         const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-//         const lastName = rest.join(' ');
-//         const password = `${firstName || 'User'}@123`;
-//         const hashedPassword = await bcrypt.hash(password, 10);
-
-//         user = await User.create({
-//           first_name: firstName || 'User',
-//           last_name: lastName || '',
-//           media: [],
-//           email_data: { temp_email_id: booking.email, is_validated: true },
-//           phone_data: { phone_number: booking.mobile_number, is_validated: true },
-//           role: 'USER',
-//           password: hashedPassword,
-//           is_active: true,
-//           is_archived: false
+//       console.log('Payment completed for booking:', merchantOrderId);
+//       console.log('Booking user field:', booking.user);
+      
+//       // Check if this is a renewal by checking if booking already has a user
+//       if (booking.user) {
+//         // This is a renewal - user already exists, just update the booking
+//         console.log('Renewal detected - updating existing user:', booking.user);
+//         console.log('Updating renewal booking with payment success...');
+        
+//         // Calculate new end date based on billing interval
+//         const billingInterval = booking.billing_interval;
+//         const monthsToAdd = INTERVAL_TO_MONTHS[billingInterval] || 1;
+//         const newStartDate = new Date();
+//         const newEndDate = new Date(newStartDate);
+//         newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
+        
+//         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+//           'paymentResult.status': 'COMPLETED',
+//           'paymentResult.paymentDate': new Date(),
+//           'paymentResult.phonepeResponse': response,
+//           start_date: newStartDate, // Update start date to payment success date
+//           end_date: newEndDate // Update end date based on billing interval
 //         });
+        
+//         console.log('Renewal booking updated successfully');
+//         console.log('User ID remains:', booking.user);
+
+//         // Send renewal confirmation email
+//         try {
+//           const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
+//           const planName = booking.plan?.name || 'Membership Plan';
+//           const billingInterval = booking.billing_interval || 'MONTHLY';
+//           const formattedNewStart = newStartDate.toLocaleDateString();
+//           const formattedNewEnd = newEndDate.toLocaleDateString();
+          
+//           await sendMembershipRenewalConfirmationEmail(
+//             booking.email,
+//             booking.name,
+//             planName,
+//             billingInterval,
+//             formattedNewStart,
+//             formattedNewEnd
+//           );
+//           console.log('Membership renewal confirmation email sent successfully');
+//         } catch (emailError) {
+//           console.error('Failed to send renewal confirmation email:', emailError);
+//         }
+//       } else {
+//         // This is a new booking - create or find user
+//         console.log('New booking detected - creating/finding user for email:', booking.email);
+//         let user = await User.findOne({ 'email_data.email_id': booking.email });
+//         console.log('Found existing user:', user ? user._id : 'None');
+        
+//         if (!user) {
+//           console.log('Creating new user for:', booking.email);
+//           const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
+//           const lastName = rest.join(' ');
+//           const password = `${firstName || 'User'}@123`;
+//           const hashedPassword = await bcrypt.hash(password, 10);
+//           user = await User.create({
+//             first_name: firstName || 'User',
+//             last_name: lastName || 'User', // Set default if empty
+//             media: [],
+//             email_data: { temp_email_id: booking.email, is_validated: true },
+//             phone_data: { phone_number: booking.mobile_number, is_validated: true },
+//             role: 'USER',
+//             password: hashedPassword,
+//             is_active: true,
+//             is_archived: false
+//           });
+//           console.log('New user created:', user._id);
+//         }
+
+//         // Update booking with user and payment details
+//         console.log('Updating booking with user:', user._id);
+//         await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+//           user: user._id,
+//           'paymentResult.status': 'COMPLETED',
+//           'paymentResult.paymentDate': new Date(),
+//           'paymentResult.phonepeResponse': response
+//         });
+//         console.log('Booking updated successfully with user');
+
+//         // Send membership booking confirmation email
+//         try {
+//           const { sendMembershipBookingConfirmationEmail } = require('../utils/sendEmail');
+//           const planName = booking.plan?.name || 'Membership Plan';
+//           const billingInterval = booking.billing_interval || 'MONTHLY';
+//           const startDate = booking.start_date?.toLocaleDateString() || new Date().toLocaleDateString();
+//           const endDate = booking.end_date?.toLocaleDateString() || new Date().toLocaleDateString();
+          
+//           await sendMembershipBookingConfirmationEmail(
+//             booking.email,
+//             booking.name,
+//             planName,
+//             billingInterval,
+//             startDate,
+//             endDate
+//           );
+//           console.log('Membership booking confirmation email sent successfully');
+//         } catch (emailError) {
+//           console.error('Failed to send membership booking email:', emailError);
+//         }
 //       }
 
-//       // Mark booking paid
-//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-//         user: user._id,
-//         'paymentResult.status': 'COMPLETED',
-//         'paymentResult.paymentDate': new Date(),
-//         'paymentResult.phonepeResponse': response
-//       });
-
-//       // Decrement capacity for the booked batch
-//       const plan = await mongoose.model('membershipplan').findById(booking.plan);
-//       if (plan && plan.batches && booking.batchId) {
-//         plan.batches = plan.batches.map(batch => {
+//       // Decrement batch capacity in plan
+//       const planDoc = await mongoose.model('membershipplan').findById(booking.plan._id);
+//       if (planDoc && planDoc.batches && booking.batchId) {
+//         planDoc.batches = planDoc.batches.map(batch => {
 //           if (
 //             batch._id.toString() === booking.batchId.toString() &&
 //             batch.capacity !== undefined &&
@@ -997,356 +1266,121 @@ exports.createBooking = async (req, res) => {
 //           }
 //           return batch;
 //         });
-//         await plan.save();
+//         await planDoc.save();
 //       } else {
 //         console.log('Missing plan or batchId, capacity not decremented');
 //       }
 
+//       // Prepare WhatsApp message details
+//       let mobileNumber = booking.mobile_number?.toString().trim() || '';
+//       if (mobileNumber) {
+//         const digits = mobileNumber.replace(/\D/g, '');
+//         if (digits.length === 10) mobileNumber = `+91${digits}`;
+//         else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
+//         else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
+//       }
+//       console.log('booking membership', booking);
+// const dancerName = booking.name || 'Participant';
+// const membershipPlan = booking.plan?.name || 'Membership Plan';
+
+// const billingIntervalMonthsMap = {
+//   MONTHLY: 1,
+//   '3_MONTHS': 3,
+//   '6_MONTHS': 6,
+//   YEARLY: 12,
+//   monthly: 1,
+//   quarterly: 3,
+//   half_yearly: 6,
+//   yearly: 12,
+// };
+
+// // Get batch start date (assuming batch has a `startDate` ISO string field)
+// const batch = booking.plan.batches.find(b => b._id.toString() === booking.batchId.toString());
+// const batchStartDate = batch?.startDate || booking.start_date || new Date();
+
+// const monthsToAdd = billingIntervalMonthsMap[booking.billing_interval] || 1;
+
+// const startDate = new Date(batchStartDate);
+// const expiryDate = new Date(startDate);
+// expiryDate.setMonth(expiryDate.getMonth() + monthsToAdd);
+
+// // Format dates as dd/mm/yyyy
+// const formattedStartDate = startDate.toLocaleDateString('en-GB');
+// const formattedExpiryDate = expiryDate.toLocaleDateString('en-GB');
+
+// const contactNo = '+91 8073139244';
+
+// const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1';
+// const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '15558600955';
+
+// const messagePayload = {
+//   integrated_number: WHATSAPP_NUMBER,
+//   content_type: "template",
+//   payload: {
+//     messaging_product: "whatsapp",
+//     type: "template",
+//     template: {
+//       name: "membership_confirmation",
+//       language: { code: "en", policy: "deterministic" },
+//       namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
+//       to_and_components: [
+//         {
+//           to: [mobileNumber],
+//           components: {
+//             body_1: { type: "text", value: dancerName },
+//             body_2: { type: "text", value: membershipPlan },
+//             body_3: { type: "text", value: formattedStartDate },
+//             body_4: { type: "text", value: formattedExpiryDate },
+//             body_5: { type: "text", value: contactNo }
+//           }
+//         }
+//       ]
+//     }
+//   }
+// };
+
+
+//       // Send WhatsApp message
+//       try {
+//         const axiosResponse = await axios.post(
+//           'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
+//           messagePayload,
+//           {
+//             headers: {
+//               authkey: '473576AtOfLQYl68f619aaP1',
+//               'Content-Type': 'application/json',
+//               Accept: 'application/json'
+//             }
+//           }
+//         );
+//         console.log('WhatsApp message sent response:', axiosResponse.data);
+//       } catch (whatsappError) {
+//         console.error(
+//           'Failed to send WhatsApp message:',
+//           whatsappError.response?.data || whatsappError.message || whatsappError
+//         );
+//       }
+
+//       // Redirect to success page
 //       return res.redirect('https://www.thedancedistrict.in/payment-success');
+//       // return res.redirect(`http://localhost:5173/payment-success`);
+
+
 //     } else {
-//       // Payment failure
+//       // Payment failed
 //       await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
 //         'paymentResult.status': 'FAILED',
 //         'paymentResult.phonepeResponse': response
 //       });
 //       return res.redirect('https://www.thedancedistrict.in/payment-failure');
-//     }
-//   } catch (err) {
-//     console.error('checkMembershipStatus:', err);
-//     res.status(500).send('Internal server error');
-//   }
-// };
+//       // return res.redirect(`http://localhost:5173/payment-failure`);
 
-
-exports.checkMembershipStatus = async (req, res) => {
-  console.log('checkMembershipStatus invoked with query:', req.query);
-  try {
-    const { merchantOrderId } = req.query;
-    if (!merchantOrderId)
-      return res.status(400).send('merchantOrderId is required');
-
-    // Get payment status from PhonePe
-    const response = await client.getOrderStatus(merchantOrderId);
-    const status = response.state;
-
-    const booking = await MembershipBooking.findById(merchantOrderId).populate('plan').lean();
-    if (!booking)
-      return res.status(404).send('Booking not found');
-
-    if (status === 'COMPLETED') {
-      console.log('Payment completed for booking:', merchantOrderId);
-      console.log('Booking user field:', booking.user);
-      
-      // Check if this is a renewal by checking if booking already has a user
-      if (booking.user) {
-        // This is a renewal - user already exists, just update the booking
-        console.log('Renewal detected - updating existing user:', booking.user);
-        console.log('Updating renewal booking with payment success...');
-        
-        // Calculate new end date based on billing interval
-        const billingInterval = booking.billing_interval;
-        const monthsToAdd = INTERVAL_TO_MONTHS[billingInterval] || 1;
-        const newStartDate = new Date();
-        const newEndDate = new Date(newStartDate);
-        newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
-        
-        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-          'paymentResult.status': 'COMPLETED',
-          'paymentResult.paymentDate': new Date(),
-          'paymentResult.phonepeResponse': response,
-          start_date: newStartDate, // Update start date to payment success date
-          end_date: newEndDate // Update end date based on billing interval
-        });
-        
-        console.log('Renewal booking updated successfully');
-        console.log('User ID remains:', booking.user);
-
-        // Send renewal confirmation email
-        try {
-          const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
-          const planName = booking.plan?.name || 'Membership Plan';
-          const billingInterval = booking.billing_interval || 'MONTHLY';
-          const formattedNewStart = newStartDate.toLocaleDateString();
-          const formattedNewEnd = newEndDate.toLocaleDateString();
-          
-          await sendMembershipRenewalConfirmationEmail(
-            booking.email,
-            booking.name,
-            planName,
-            billingInterval,
-            formattedNewStart,
-            formattedNewEnd
-          );
-          console.log('Membership renewal confirmation email sent successfully');
-        } catch (emailError) {
-          console.error('Failed to send renewal confirmation email:', emailError);
-        }
-      } else {
-        // This is a new booking - create or find user
-        console.log('New booking detected - creating/finding user for email:', booking.email);
-        let user = await User.findOne({ 'email_data.email_id': booking.email });
-        console.log('Found existing user:', user ? user._id : 'None');
-        
-        if (!user) {
-          console.log('Creating new user for:', booking.email);
-          const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-          const lastName = rest.join(' ');
-          const password = `${firstName || 'User'}@123`;
-          const hashedPassword = await bcrypt.hash(password, 10);
-          user = await User.create({
-            first_name: firstName || 'User',
-            last_name: lastName || 'User', // Set default if empty
-            media: [],
-            email_data: { temp_email_id: booking.email, is_validated: true },
-            phone_data: { phone_number: booking.mobile_number, is_validated: true },
-            role: 'USER',
-            password: hashedPassword,
-            is_active: true,
-            is_archived: false
-          });
-          console.log('New user created:', user._id);
-        }
-
-        // Update booking with user and payment details
-        console.log('Updating booking with user:', user._id);
-        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-          user: user._id,
-          'paymentResult.status': 'COMPLETED',
-          'paymentResult.paymentDate': new Date(),
-          'paymentResult.phonepeResponse': response
-        });
-        console.log('Booking updated successfully with user');
-
-        // Send membership booking confirmation email
-        try {
-          const { sendMembershipBookingConfirmationEmail } = require('../utils/sendEmail');
-          const planName = booking.plan?.name || 'Membership Plan';
-          const billingInterval = booking.billing_interval || 'MONTHLY';
-          const startDate = booking.start_date?.toLocaleDateString() || new Date().toLocaleDateString();
-          const endDate = booking.end_date?.toLocaleDateString() || new Date().toLocaleDateString();
-          
-          await sendMembershipBookingConfirmationEmail(
-            booking.email,
-            booking.name,
-            planName,
-            billingInterval,
-            startDate,
-            endDate
-          );
-          console.log('Membership booking confirmation email sent successfully');
-        } catch (emailError) {
-          console.error('Failed to send membership booking email:', emailError);
-        }
-      }
-
-      // Decrement batch capacity in plan
-      const planDoc = await mongoose.model('membershipplan').findById(booking.plan._id);
-      if (planDoc && planDoc.batches && booking.batchId) {
-        planDoc.batches = planDoc.batches.map(batch => {
-          if (
-            batch._id.toString() === booking.batchId.toString() &&
-            batch.capacity !== undefined &&
-            batch.capacity > 0
-          ) {
-            batch.capacity -= 1;
-          }
-          return batch;
-        });
-        await planDoc.save();
-      } else {
-        console.log('Missing plan or batchId, capacity not decremented');
-      }
-
-      // Prepare WhatsApp message details
-      let mobileNumber = booking.mobile_number?.toString().trim() || '';
-      if (mobileNumber) {
-        const digits = mobileNumber.replace(/\D/g, '');
-        if (digits.length === 10) mobileNumber = `+91${digits}`;
-        else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
-        else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
-      }
-      console.log('booking membership', booking);
-const dancerName = booking.name || 'Participant';
-const membershipPlan = booking.plan?.name || 'Membership Plan';
-
-const billingIntervalMonthsMap = {
-  MONTHLY: 1,
-  '3_MONTHS': 3,
-  '6_MONTHS': 6,
-  YEARLY: 12,
-  monthly: 1,
-  quarterly: 3,
-  half_yearly: 6,
-  yearly: 12,
-};
-
-// Get batch start date (assuming batch has a `startDate` ISO string field)
-const batch = booking.plan.batches.find(b => b._id.toString() === booking.batchId.toString());
-const batchStartDate = batch?.startDate || booking.start_date || new Date();
-
-const monthsToAdd = billingIntervalMonthsMap[booking.billing_interval] || 1;
-
-const startDate = new Date(batchStartDate);
-const expiryDate = new Date(startDate);
-expiryDate.setMonth(expiryDate.getMonth() + monthsToAdd);
-
-// Format dates as dd/mm/yyyy
-const formattedStartDate = startDate.toLocaleDateString('en-GB');
-const formattedExpiryDate = expiryDate.toLocaleDateString('en-GB');
-
-const contactNo = '+91 8073139244';
-
-const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1';
-const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '15558600955';
-
-const messagePayload = {
-  integrated_number: WHATSAPP_NUMBER,
-  content_type: "template",
-  payload: {
-    messaging_product: "whatsapp",
-    type: "template",
-    template: {
-      name: "membership_confirmation",
-      language: { code: "en", policy: "deterministic" },
-      namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
-      to_and_components: [
-        {
-          to: [mobileNumber],
-          components: {
-            body_1: { type: "text", value: dancerName },
-            body_2: { type: "text", value: membershipPlan },
-            body_3: { type: "text", value: formattedStartDate },
-            body_4: { type: "text", value: formattedExpiryDate },
-            body_5: { type: "text", value: contactNo }
-          }
-        }
-      ]
-    }
-  }
-};
-
-
-      // Send WhatsApp message
-      try {
-        const axiosResponse = await axios.post(
-          'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',
-          messagePayload,
-          {
-            headers: {
-              authkey: '473576AtOfLQYl68f619aaP1',
-              'Content-Type': 'application/json',
-              Accept: 'application/json'
-            }
-          }
-        );
-        console.log('WhatsApp message sent response:', axiosResponse.data);
-      } catch (whatsappError) {
-        console.error(
-          'Failed to send WhatsApp message:',
-          whatsappError.response?.data || whatsappError.message || whatsappError
-        );
-      }
-
-      // Redirect to success page
-      return res.redirect('https://www.thedancedistrict.in/payment-success');
-      // return res.redirect(`http://localhost:5173/payment-success`);
-
-
-    } else {
-      // Payment failed
-      await mongoose.model('membershipbooking').findByIdAndUpdate(merchantOrderId, {
-        'paymentResult.status': 'FAILED',
-        'paymentResult.phonepeResponse': response
-      });
-      return res.redirect('https://www.thedancedistrict.in/payment-failure');
-      // return res.redirect(`http://localhost:5173/payment-failure`);
-
-    }
-  } catch (err) {
-    console.error('checkMembershipStatus:', err);
-    return res.status(500).send('Internal server error');
-  }
-};
-
-// exports.checkMembershipStatus = async (req, res) => {
-//   console.log('checkMembershipStatus invoked with query:', req.query);
-//   try {
-//     const { merchantOrderId } = req.query;
-//     if (!merchantOrderId)
-//       return res.status(400).send('merchantOrderId is required');
-
-//     // Check payment status from PhonePe
-//     const response = await client.getOrderStatus(merchantOrderId);
-//     const status = response.state;
-
-//     const booking = await MembershipBooking.findById(merchantOrderId);
-//     if (!booking)
-//       return res.status(404).send('Booking not found');
-
-//     if (status === 'COMPLETED') {
-//       // Create or find a user
-//       let user = await User.findOne({ 'email_data.email_id': booking.email });
-//       if (!user) {
-//         const [firstName, ...rest] = (booking.name || '').trim().split(/\s+/);
-//         const lastName = rest.join(' ');
-//         const password = `${firstName || 'User'}@123`;
-//         const hashedPassword = await bcrypt.hash(password, 10);
-
-//         user = await User.create({
-//           first_name: firstName || 'User',
-//           last_name: lastName || '',
-//           media: [],
-//           email_data: { temp_email_id: booking.email, is_validated: true },
-//           phone_data: { phone_number: booking.mobile_number, is_validated: true },
-//           role: 'USER',
-//           password: hashedPassword,
-//           is_active: true,
-//           is_archived: false
-//         });
-//       }
-
-//       // Update booking with payment info and reference user
-//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-//         user: user._id,
-//         'paymentResult.status': 'COMPLETED',
-//         'paymentResult.paymentDate': new Date(),
-//         'paymentResult.phonepeResponse': response
-//       });
-
-//       // Decrement batch capacity
-//       const plan = await MembershipPlan.findById(booking.plan);
-//       if (plan && plan.batches && booking.batchId) {
-//         plan.batches = plan.batches.map(batch => {
-//           if (
-//             batch._id.toString() === booking.batchId.toString() &&
-//             batch.capacity !== undefined &&
-//             batch.capacity > 0
-//           ) {
-//             batch.capacity -= 1;
-//           }
-//           return batch;
-//         });
-//         await plan.save();
-//       } else {
-//         console.log('Missing plan or batchId, capacity not decremented');
-//       }
-
-//       // Redirect to success page
-//       return res.redirect('https://www.thedancedistrict.in/payment-success');
-
-//     } else {
-//       // Mark payment as failed
-//       await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
-//         'paymentResult.status': 'FAILED',
-//         'paymentResult.phonepeResponse': response
-//       });
-//       return res.redirect('https://www.thedancedistrict.in/payment-failure');
 //     }
 //   } catch (err) {
 //     console.error('checkMembershipStatus:', err);
 //     return res.status(500).send('Internal server error');
 //   }
-// }
+// };
 
 // Get membership plan details for a specific user
 exports.getUserMemberships = async (req, res) => {
