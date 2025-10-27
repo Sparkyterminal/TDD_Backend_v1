@@ -941,24 +941,16 @@ exports.createBooking = async (req, res) => {
   exports.checkMembershipStatus = async (req, res) => {
     console.log('checkMembershipStatus invoked with query:', req.query);
     try {
-      // Get merchantOrderId from query
       const { merchantOrderId } = req.query;
       if (!merchantOrderId) return res.status(400).send('merchantOrderId is required');
   
-      // Extract underlying bookingId (ObjectId) from merchantOrderId
-      // Supports both raw ObjectId and formats like: ORDER_<timestamp>_<ObjectId>
-      let bookingId = merchantOrderId;
+      // Since merchantOrderId is the raw ObjectId string in your flow, use directly
+      // Validate ID format
       if (!isValidObjectId(merchantOrderId)) {
-        // Try to extract final 24-hex segment
-        const parts = merchantOrderId.split('_');
-        bookingId = parts[parts.length - 1];
+        return res.status(400).send('Invalid merchantOrderId');
       }
   
-      if (!isValidObjectId(bookingId)) {
-        return res.status(400).send('Invalid booking ID parsed from merchantOrderId');
-      }
-  
-      // Query payment status from PhonePe using the full merchantOrderId
+      // Retrieve payment status from PhonePe using full merchantOrderId
       let status = 'unknown';
       let phonepeResponse = {};
       try {
@@ -970,20 +962,19 @@ exports.createBooking = async (req, res) => {
         // Proceed to show database result anyway
       }
   
-      const booking = await MembershipBooking.findById(bookingId).populate('plan').lean();
+      const booking = await MembershipBooking.findById(merchantOrderId).populate('plan').lean();
       if (!booking) return res.status(404).send('Booking not found');
   
-      // Payment Success Flow
       if (status === 'COMPLETED') {
-        // Renewal: booking.user exists
         if (booking.user) {
-          // Calculate new end date
+          // Renewal flow
+  
           const monthsToAdd = INTERVAL_TO_MONTHS[booking.billing_interval] || 1;
           const newStartDate = new Date();
           const newEndDate = new Date(newStartDate);
           newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
   
-          await MembershipBooking.findByIdAndUpdate(bookingId, {
+          await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
             'paymentResult.phonepeResponse': phonepeResponse,
@@ -991,7 +982,7 @@ exports.createBooking = async (req, res) => {
             end_date: newEndDate
           });
   
-          // Email (try/catch)
+          // Send renewal confirmation email
           try {
             const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
             const planName = booking.plan?.name || 'Membership Plan';
@@ -1007,9 +998,8 @@ exports.createBooking = async (req, res) => {
           } catch (e) {
             console.error('Email error:', e);
           }
-  
         } else {
-          // New Booking (no user)
+          // New booking flow: create user, send booking confirmation email
           let user = await User.findOne({ 'email_data.email_id': booking.email });
           if (!user) {
             const [firstName, ...rest] = (booking.name || 'User').trim().split(/\s+/);
@@ -1028,7 +1018,8 @@ exports.createBooking = async (req, res) => {
               is_archived: false
             });
           }
-          await MembershipBooking.findByIdAndUpdate(bookingId, {
+  
+          await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
             user: user._id,
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
@@ -1063,7 +1054,7 @@ exports.createBooking = async (req, res) => {
           await planDoc.save();
         }
   
-        // WhatsApp notification (try/catch block)
+        // Send WhatsApp notification
         try {
           const mobileNumber = booking.mobile_number?.toString().replace(/\D/g, '');
           const formattedNumber = (mobileNumber.length === 10) ? `+91${mobileNumber}` : mobileNumber;
@@ -1115,11 +1106,9 @@ exports.createBooking = async (req, res) => {
           console.error('Whatsapp error:', whatsappError);
         }
   
-        // Finally: Redirect to payment-success page
         return res.redirect('https://www.thedancedistrict.in/payment-success');
       } else {
-        // Payment failure logic
-        await MembershipBooking.findByIdAndUpdate(bookingId, {
+        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
           'paymentResult.status': 'FAILED',
           'paymentResult.phonepeResponse': phonepeResponse
         });
@@ -1129,7 +1118,8 @@ exports.createBooking = async (req, res) => {
       console.error('checkMembershipStatus:', err);
       return res.status(500).send('Internal server error');
     }
-  }
+  };
+  
 
 
 // exports.checkMembershipStatus = async (req, res) => {
@@ -1679,11 +1669,11 @@ exports.renewMembership = async (req, res) => {
     const { membershipBookingId } = req.params;
     const { planId, userId, batchId, billing_interval, billingInterval } = req.body;
 
-    // Use billingInterval or billing_interval from frontend, normalize
+    // Normalize billing interval input
     let intervalInput = billingInterval || billing_interval || 'monthly';
     intervalInput = String(intervalInput).toLowerCase();
 
-    // Map to backend required value
+    // Map to backend interval codes
     let interval = FRONTEND_INTERVAL_MAP[intervalInput] || intervalInput.toUpperCase();
     const allowedIntervals = Object.keys(INTERVAL_TO_MONTHS);
     if (!allowedIntervals.includes(interval)) {
@@ -1714,13 +1704,12 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Membership is not expired yet' });
     }
 
-    // Check if there's already a pending renewal (payment initiated but not completed)
-    // Allow renewal even if there's a pending payment - user might want to change plans or retry
+    // Check pending initiated payment
     if (existingBooking.paymentResult && existingBooking.paymentResult.status === 'initiated') {
       console.log('Found existing initiated payment, allowing renewal to proceed...');
     }
 
-    // Fetch new plan and batch to validate existence and capacity
+    // Validate plan and batch
     const newPlan = await MembershipPlan.findById(planId).lean();
     if (!newPlan || !newPlan.is_active) {
       return res.status(404).json({ error: 'Membership plan not found or inactive' });
@@ -1733,64 +1722,50 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch is full' });
     }
 
-    // Calculate new membership end date
+    // Calculate new end date
     const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
     const startDate = existingBooking.end_date || new Date();
     const effectiveStartDate = startDate > now ? startDate : now;
     const endDate = new Date(effectiveStartDate);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-     // Calculate price without additional fees for renewals, convert to paise
-     // Map interval to correct price key
-     let priceKey;
-     switch (interval.toLowerCase()) {
-       case 'monthly':
-         priceKey = 'monthly';
-         break;
-       case '3_months':
-         priceKey = 'quarterly';
-         break;
-       case '6_months':
-         priceKey = 'half_yearly';
-         break;
-       case 'yearly':
-         priceKey = 'yearly';
-         break;
-       default:
-         priceKey = 'monthly'; // fallback
-     }
-     
-     const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
-     
-     // Ensure minimum amount for PhonePe (at least 1 paise = ₹0.01)
-     if (priceRaw <= 0) {
-       return res.status(400).json({ 
-         error: 'Invalid plan price. Plan must have a valid price for renewal.',
-         debug: {
-           interval,
-           prices: newPlan.prices,
-           priceRaw
-         }
-       });
-     }
-     
-     const priceInPaise = Math.round(priceRaw * 100);
-     
-     // Double check minimum amount
-     if (priceInPaise < 1) {
-       return res.status(400).json({ 
-         error: 'Payment amount too low. Minimum amount is ₹0.01',
-         debug: {
-           priceRaw,
-           priceInPaise
-         }
-       });
-     }
+    // Get price for interval
+    let priceKey;
+    switch (interval.toLowerCase()) {
+      case 'monthly':
+        priceKey = 'monthly';
+        break;
+      case '3_months':
+        priceKey = 'quarterly';
+        break;
+      case '6_months':
+        priceKey = 'half_yearly';
+        break;
+      case 'yearly':
+        priceKey = 'yearly';
+        break;
+      default:
+        priceKey = 'monthly';
+    }
+    const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
+    if (priceRaw <= 0) {
+      return res.status(400).json({
+        error: 'Invalid plan price. Plan must have a valid price for renewal.',
+        debug: { interval, prices: newPlan.prices, priceRaw }
+      });
+    }
+    const priceInPaise = Math.round(priceRaw * 100);
+    if (priceInPaise < 1) {
+      return res.status(400).json({
+        error: 'Payment amount too low. Minimum amount is ₹0.01',
+        debug: { priceRaw, priceInPaise }
+      });
+    }
 
-    // Update existing booking for renewal (don't create new booking)
+    // Update existing booking for renewal and set payment initiated status
     console.log('Renewing membership for existing user:', userId);
     console.log('Updating booking:', membershipBookingId);
-    
+
     const renewalBooking = await MembershipBooking.findByIdAndUpdate(
       membershipBookingId,
       {
@@ -1802,16 +1777,14 @@ exports.renewMembership = async (req, res) => {
       },
       { new: true }
     );
-    
+
     console.log('User ID set to:', renewalBooking.user);
-    
-    // const merchantOrderId = renewalBooking._id.toString();
-    // const merchantOrderId = `ORDER_${Date.now()}_${userId}`;
+
+    // Use raw ObjectId string as merchantOrderId (per your request)
     const merchantOrderId = renewalBooking._id.toString();
     console.log('merchantOrderId', merchantOrderId);
-    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-    // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
 
+    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
 
     // Build payment request
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
@@ -1832,6 +1805,166 @@ exports.renewMembership = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
+
+// exports.renewMembership = async (req, res) => {
+//   try {
+//     const { membershipBookingId } = req.params;
+//     const { planId, userId, batchId, billing_interval, billingInterval } = req.body;
+
+//     // Use billingInterval or billing_interval from frontend, normalize
+//     let intervalInput = billingInterval || billing_interval || 'monthly';
+//     intervalInput = String(intervalInput).toLowerCase();
+
+//     // Map to backend required value
+//     let interval = FRONTEND_INTERVAL_MAP[intervalInput] || intervalInput.toUpperCase();
+//     const allowedIntervals = Object.keys(INTERVAL_TO_MONTHS);
+//     if (!allowedIntervals.includes(interval)) {
+//       return res.status(400).json({ error: 'Invalid billing_interval provided' });
+//     }
+
+//     // Validate IDs
+//     if (!isValidObjectId(membershipBookingId)) {
+//       return res.status(400).json({ error: 'Invalid membership booking ID' });
+//     }
+//     if (!planId || !isValidObjectId(planId)) {
+//       return res.status(400).json({ error: 'Valid planId is required' });
+//     }
+//     if (!userId || !isValidObjectId(userId)) {
+//       return res.status(400).json({ error: 'Valid userId is required' });
+//     }
+//     if (!batchId || !isValidObjectId(batchId)) {
+//       return res.status(400).json({ error: 'Valid batchId is required' });
+//     }
+
+//     // Find existing booking and check expiry
+//     const existingBooking = await MembershipBooking.findById(membershipBookingId).lean();
+//     if (!existingBooking) {
+//       return res.status(404).json({ error: 'Membership booking not found' });
+//     }
+//     const now = new Date();
+//     if (existingBooking.end_date && existingBooking.end_date > now) {
+//       return res.status(400).json({ error: 'Membership is not expired yet' });
+//     }
+
+//     // Check if there's already a pending renewal (payment initiated but not completed)
+//     // Allow renewal even if there's a pending payment - user might want to change plans or retry
+//     if (existingBooking.paymentResult && existingBooking.paymentResult.status === 'initiated') {
+//       console.log('Found existing initiated payment, allowing renewal to proceed...');
+//     }
+
+//     // Fetch new plan and batch to validate existence and capacity
+//     const newPlan = await MembershipPlan.findById(planId).lean();
+//     if (!newPlan || !newPlan.is_active) {
+//       return res.status(404).json({ error: 'Membership plan not found or inactive' });
+//     }
+//     const batch = newPlan.batches.find(b => b._id.toString() === batchId);
+//     if (!batch) {
+//       return res.status(400).json({ error: 'Selected batch not found in the membership plan' });
+//     }
+//     if (batch.capacity !== undefined && batch.capacity <= 0) {
+//       return res.status(400).json({ error: 'Selected batch is full' });
+//     }
+
+//     // Calculate new membership end date
+//     const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
+//     const startDate = existingBooking.end_date || new Date();
+//     const effectiveStartDate = startDate > now ? startDate : now;
+//     const endDate = new Date(effectiveStartDate);
+//     endDate.setMonth(endDate.getMonth() + monthsToAdd);
+
+//      // Calculate price without additional fees for renewals, convert to paise
+//      // Map interval to correct price key
+//      let priceKey;
+//      switch (interval.toLowerCase()) {
+//        case 'monthly':
+//          priceKey = 'monthly';
+//          break;
+//        case '3_months':
+//          priceKey = 'quarterly';
+//          break;
+//        case '6_months':
+//          priceKey = 'half_yearly';
+//          break;
+//        case 'yearly':
+//          priceKey = 'yearly';
+//          break;
+//        default:
+//          priceKey = 'monthly'; // fallback
+//      }
+     
+//      const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
+     
+//      // Ensure minimum amount for PhonePe (at least 1 paise = ₹0.01)
+//      if (priceRaw <= 0) {
+//        return res.status(400).json({ 
+//          error: 'Invalid plan price. Plan must have a valid price for renewal.',
+//          debug: {
+//            interval,
+//            prices: newPlan.prices,
+//            priceRaw
+//          }
+//        });
+//      }
+     
+//      const priceInPaise = Math.round(priceRaw * 100);
+     
+//      // Double check minimum amount
+//      if (priceInPaise < 1) {
+//        return res.status(400).json({ 
+//          error: 'Payment amount too low. Minimum amount is ₹0.01',
+//          debug: {
+//            priceRaw,
+//            priceInPaise
+//          }
+//        });
+//      }
+
+//     // Update existing booking for renewal (don't create new booking)
+//     console.log('Renewing membership for existing user:', userId);
+//     console.log('Updating booking:', membershipBookingId);
+    
+//     const renewalBooking = await MembershipBooking.findByIdAndUpdate(
+//       membershipBookingId,
+//       {
+//         user: userId,
+//         plan: newPlan._id,
+//         batchId: batch._id,
+//         billing_interval: interval,
+//         paymentResult: { status: 'initiated' }
+//       },
+//       { new: true }
+//     );
+    
+//     console.log('User ID set to:', renewalBooking.user);
+    
+//     // const merchantOrderId = renewalBooking._id.toString();
+//     // const merchantOrderId = `ORDER_${Date.now()}_${userId}`;
+//     const merchantOrderId = renewalBooking._id.toString();
+//     console.log('merchantOrderId', merchantOrderId);
+//     const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+//     // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+
+
+//     // Build payment request
+//     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//       .merchantOrderId(merchantOrderId)
+//       .amount(priceInPaise)
+//       .redirectUrl(redirectUrl)
+//       .build();
+
+//     const paymentResponse = await client.pay(paymentRequest);
+
+//     return res.status(201).json({
+//       message: 'Membership renewal initiated. Please complete payment.',
+//       renewalBooking,
+//       checkoutPageUrl: paymentResponse.redirectUrl
+//     });
+//   } catch (err) {
+//     console.error('Renew membership error:', err);
+//     return res.status(500).json({ error: 'Server error' });
+//   }
+// };
 
   
   exports.getConfirmedMembershipBookings = async (req, res) => {
