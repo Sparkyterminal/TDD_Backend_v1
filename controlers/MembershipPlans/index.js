@@ -944,37 +944,40 @@ exports.createBooking = async (req, res) => {
       const { merchantOrderId } = req.query;
       if (!merchantOrderId) return res.status(400).send('merchantOrderId is required');
   
-      // Since merchantOrderId is the raw ObjectId string in your flow, use directly
-      // Validate ID format
+      // Extract bookingId (ObjectId) from merchantOrderId (last part of underscored string)
+      let bookingId = merchantOrderId;
       if (!isValidObjectId(merchantOrderId)) {
-        return res.status(400).send('Invalid merchantOrderId');
+        const parts = merchantOrderId.split('_');
+        bookingId = parts[parts.length - 1];
       }
   
-      // Retrieve payment status from PhonePe using full merchantOrderId
+      if (!isValidObjectId(bookingId)) {
+        return res.status(400).send('Invalid booking ID parsed from merchantOrderId');
+      }
+  
       let status = 'unknown';
       let phonepeResponse = {};
+  
       try {
         const response = await client.getOrderStatus(merchantOrderId);
         status = response.state;
         phonepeResponse = response;
       } catch (gatewayErr) {
         console.error('PhonePe gateway status error:', gatewayErr);
-        // Proceed to show database result anyway
+        // Continue to database lookup
       }
   
-      const booking = await MembershipBooking.findById(merchantOrderId).populate('plan').lean();
+      const booking = await MembershipBooking.findById(bookingId).populate('plan').lean();
       if (!booking) return res.status(404).send('Booking not found');
   
       if (status === 'COMPLETED') {
         if (booking.user) {
-          // Renewal flow
-  
           const monthsToAdd = INTERVAL_TO_MONTHS[booking.billing_interval] || 1;
           const newStartDate = new Date();
           const newEndDate = new Date(newStartDate);
           newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
   
-          await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          await MembershipBooking.findByIdAndUpdate(bookingId, {
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
             'paymentResult.phonepeResponse': phonepeResponse,
@@ -982,7 +985,6 @@ exports.createBooking = async (req, res) => {
             end_date: newEndDate
           });
   
-          // Send renewal confirmation email
           try {
             const { sendMembershipRenewalConfirmationEmail } = require('../../utils/sendEmail');
             const planName = booking.plan?.name || 'Membership Plan';
@@ -999,7 +1001,6 @@ exports.createBooking = async (req, res) => {
             console.error('Email error:', e);
           }
         } else {
-          // New booking flow: create user, send booking confirmation email
           let user = await User.findOne({ 'email_data.email_id': booking.email });
           if (!user) {
             const [firstName, ...rest] = (booking.name || 'User').trim().split(/\s+/);
@@ -1019,7 +1020,7 @@ exports.createBooking = async (req, res) => {
             });
           }
   
-          await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+          await MembershipBooking.findByIdAndUpdate(bookingId, {
             user: user._id,
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
@@ -1054,7 +1055,7 @@ exports.createBooking = async (req, res) => {
           await planDoc.save();
         }
   
-        // Send WhatsApp notification
+        // WhatsApp notification
         try {
           const mobileNumber = booking.mobile_number?.toString().replace(/\D/g, '');
           const formattedNumber = (mobileNumber.length === 10) ? `+91${mobileNumber}` : mobileNumber;
@@ -1108,7 +1109,7 @@ exports.createBooking = async (req, res) => {
   
         return res.redirect('https://www.thedancedistrict.in/payment-success');
       } else {
-        await MembershipBooking.findByIdAndUpdate(merchantOrderId, {
+        await MembershipBooking.findByIdAndUpdate(bookingId, {
           'paymentResult.status': 'FAILED',
           'paymentResult.phonepeResponse': phonepeResponse
         });
@@ -1119,6 +1120,7 @@ exports.createBooking = async (req, res) => {
       return res.status(500).send('Internal server error');
     }
   };
+  ;
   
 
 
@@ -1669,18 +1671,15 @@ exports.renewMembership = async (req, res) => {
     const { membershipBookingId } = req.params;
     const { planId, userId, batchId, billing_interval, billingInterval } = req.body;
 
-    // Normalize billing interval input
     let intervalInput = billingInterval || billing_interval || 'monthly';
     intervalInput = String(intervalInput).toLowerCase();
 
-    // Map to backend interval codes
     let interval = FRONTEND_INTERVAL_MAP[intervalInput] || intervalInput.toUpperCase();
     const allowedIntervals = Object.keys(INTERVAL_TO_MONTHS);
     if (!allowedIntervals.includes(interval)) {
       return res.status(400).json({ error: 'Invalid billing_interval provided' });
     }
 
-    // Validate IDs
     if (!isValidObjectId(membershipBookingId)) {
       return res.status(400).json({ error: 'Invalid membership booking ID' });
     }
@@ -1694,7 +1693,6 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Valid batchId is required' });
     }
 
-    // Find existing booking and check expiry
     const existingBooking = await MembershipBooking.findById(membershipBookingId).lean();
     if (!existingBooking) {
       return res.status(404).json({ error: 'Membership booking not found' });
@@ -1704,12 +1702,10 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Membership is not expired yet' });
     }
 
-    // Check pending initiated payment
     if (existingBooking.paymentResult && existingBooking.paymentResult.status === 'initiated') {
       console.log('Found existing initiated payment, allowing renewal to proceed...');
     }
 
-    // Validate plan and batch
     const newPlan = await MembershipPlan.findById(planId).lean();
     if (!newPlan || !newPlan.is_active) {
       return res.status(404).json({ error: 'Membership plan not found or inactive' });
@@ -1722,31 +1718,21 @@ exports.renewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch is full' });
     }
 
-    // Calculate new end date
     const monthsToAdd = INTERVAL_TO_MONTHS[interval] || 1;
     const startDate = existingBooking.end_date || new Date();
     const effectiveStartDate = startDate > now ? startDate : now;
     const endDate = new Date(effectiveStartDate);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-    // Get price for interval
     let priceKey;
     switch (interval.toLowerCase()) {
-      case 'monthly':
-        priceKey = 'monthly';
-        break;
-      case '3_months':
-        priceKey = 'quarterly';
-        break;
-      case '6_months':
-        priceKey = 'half_yearly';
-        break;
-      case 'yearly':
-        priceKey = 'yearly';
-        break;
-      default:
-        priceKey = 'monthly';
+      case 'monthly': priceKey = 'monthly'; break;
+      case '3_months': priceKey = 'quarterly'; break;
+      case '6_months': priceKey = 'half_yearly'; break;
+      case 'yearly': priceKey = 'yearly'; break;
+      default: priceKey = 'monthly';
     }
+
     const priceRaw = newPlan.prices?.[priceKey] || newPlan.prices?.monthly || 0;
     if (priceRaw <= 0) {
       return res.status(400).json({
@@ -1754,6 +1740,7 @@ exports.renewMembership = async (req, res) => {
         debug: { interval, prices: newPlan.prices, priceRaw }
       });
     }
+
     const priceInPaise = Math.round(priceRaw * 100);
     if (priceInPaise < 1) {
       return res.status(400).json({
@@ -1762,7 +1749,6 @@ exports.renewMembership = async (req, res) => {
       });
     }
 
-    // Update existing booking for renewal and set payment initiated status
     console.log('Renewing membership for existing user:', userId);
     console.log('Updating booking:', membershipBookingId);
 
@@ -1780,13 +1766,12 @@ exports.renewMembership = async (req, res) => {
 
     console.log('User ID set to:', renewalBooking.user);
 
-    // Use raw ObjectId string as merchantOrderId (per your request)
-    const merchantOrderId = renewalBooking._id.toString();
+    // Use gateway-compliant merchantOrderId
+    const merchantOrderId = `ORDER_${Date.now()}_${renewalBooking._id}`;
     console.log('merchantOrderId', merchantOrderId);
 
     const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
 
-    // Build payment request
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
       .merchantOrderId(merchantOrderId)
       .amount(priceInPaise)
@@ -1800,6 +1785,7 @@ exports.renewMembership = async (req, res) => {
       renewalBooking,
       checkoutPageUrl: paymentResponse.redirectUrl
     });
+
   } catch (err) {
     console.error('Renew membership error:', err);
     return res.status(500).json({ error: 'Server error' });
