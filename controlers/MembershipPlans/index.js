@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.SANDBOX
+const env = Env.PRODUCTION
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -2822,81 +2822,6 @@ exports.createUsersForExistingBookings = async (req, res) => {
   }
 };
 
-
-// exports.manualRenewMembership = async (req, res) => {
-//   try {
-//     const { membershipBookingId } = req.params;
-//     const {
-//       planId,
-//       userId,
-//       batchId,
-//       billing_interval
-//     } = req.body;
-
-//     // Validate membershipBookingId
-//     if (!isValidObjectId(membershipBookingId)) {
-//       return res.status(400).json({ error: 'Invalid membership booking ID' });
-//     }
-
-//     const existingBooking = await MembershipBooking.findById(membershipBookingId);
-//     if (!existingBooking) {
-//       return res.status(404).json({ error: 'Membership booking not found' });
-//     }
-
-//     // Validate plan
-//     if (!isValidObjectId(planId)) {
-//       return res.status(400).json({ error: 'Invalid planId' });
-//     }
-//     const newPlan = await MembershipPlan.findById(planId);
-//     if (!newPlan || !newPlan.is_active) {
-//       return res.status(404).json({ error: 'Membership plan not found or inactive' });
-//     }
-
-//     // Validate batch
-//     const batch = newPlan.batches.find(b => b._id.toString() === batchId);
-//     if (!batch) {
-//       return res.status(400).json({ error: 'Selected batch not found in the plan' });
-//     }
-
-//     // Calculate dates
-//     const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
-//     const startDate = existingBooking.end_date || new Date();
-//     const effectiveStartDate = startDate > new Date() ? startDate : new Date();
-//     const endDate = new Date(effectiveStartDate);
-//     endDate.setMonth(endDate.getMonth() + monthsToAdd);
-
-//     // Create renewal record directly
-//     const renewalData = {
-//       plan: planId,
-//       batchId: batch._id,
-//       user: existingBooking.user,
-//       billing_interval,
-//       start_date: startDate,
-//       end_date: endDate,
-//       paymentResult: { status: 'COMPLETED' }, // Mark as completed for manual renewal
-//       // Optionally carry over user info or update as needed
-//     };
-
-//     const renewalBooking = await MembershipBooking.create(renewalData);
-
-//     // Populate the response
-//     const populatedRenewal = await MembershipBooking.findById(renewalBooking._id)
-//       .populate('plan', 'name price billing_interval plan_for')
-//       .populate('user', 'first_name last_name email_data phone_data')
-//       .lean();
-
-//     // Optionally notify user here
-
-//     return res.status(201).json({
-//       success: true,
-//       message: 'Membership renewed manually by admin.',
-//       data: populatedRenewal
-//     });
-//   } catch (err) {
-//     console.error('Admin manual renewal error:', err);
-//     return res.status(500).json({ error: 'Server error' });
-//   }
-// };
 exports.manualRenewMembership = async (req, res) => {
   try {
     const { membershipBookingId } = req.params;
