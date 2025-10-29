@@ -2821,3 +2821,127 @@ exports.createUsersForExistingBookings = async (req, res) => {
     });
   }
 };
+
+
+exports.manualRenewMembership = async (req, res) => {
+  try {
+    const { membershipBookingId } = req.params;
+    const {
+      planId,
+      userId,
+      batchId,
+      billing_interval,
+      start_date,
+      end_date,
+      payment_status
+    } = req.body;
+
+    // Validate IDs
+    if (!isValidObjectId(membershipBookingId)) {
+      return res.status(400).json({ error: 'Invalid membership booking ID' });
+    }
+    if (!isValidObjectId(planId)) {
+      return res.status(400).json({ error: 'Invalid planId' });
+    }
+    if (userId && !isValidObjectId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    if (batchId && !isValidObjectId(batchId)) {
+      return res.status(400).json({ error: 'Invalid batchId' });
+    }
+
+    // Validate existing booking
+    const existingBooking = await MembershipBooking.findById(membershipBookingId);
+    if (!existingBooking) {
+      return res.status(404).json({ error: 'Membership booking not found' });
+    }
+
+    // Validate plan
+    const plan = await MembershipPlan.findById(planId);
+    if (!plan || !plan.is_active) {
+      return res.status(404).json({ error: 'Membership plan not found or inactive' });
+    }
+
+    // Validate batch
+    const batch = plan.batches.find(b => b._id.toString() === batchId);
+    if (!batch) {
+      return res.status(400).json({ error: 'Selected batch not found in the plan' });
+    }
+
+    // Validate dates
+    let startDateObj, endDateObj;
+    if (start_date) {
+      startDateObj = new Date(start_date);
+      if (isNaN(startDateObj.getTime())) {
+        return res.status(400).json({ error: 'Invalid start date format' });
+      }
+    } else {
+      startDateObj = new Date();
+    }
+    if (end_date) {
+      endDateObj = new Date(end_date);
+      if (isNaN(endDateObj.getTime())) {
+        return res.status(400).json({ error: 'Invalid end date format' });
+      }
+    } else {
+      // Default to adding months based on billing interval
+      const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
+      endDateObj = new Date(startDateObj);
+      endDateObj.setMonth(endDateObj.getMonth() + monthsToAdd);
+    }
+
+    // Create or update renewal booking
+    const renewalData = {
+      plan: planId,
+      batchId: batch._id,
+      user: userId || existingBooking.user,
+      start_date: startDateObj,
+      end_date: endDateObj,
+      paymentResult: { status: payment_status || 'initiated' }
+    };
+
+    // Assuming renewal creates a new booking, or you can update existing as needed
+    const newRenewal = await MembershipBooking.create(renewalData);
+
+    // Populate for response
+    const populatedRenewal = await MembershipBooking.findById(newRenewal._id)
+      .populate('plan', 'name price billing_interval plan_for')
+      .populate('user', 'first_name last_name email_data phone_data')
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      message: 'Membership renewed successfully',
+      data: populatedRenewal
+    });
+  } catch (error) {
+    console.error('Error in manual renewal:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+exports.toggleDiscontinued = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!isValidObjectId(bookingId)) {
+      return res.status(400).json({ error: 'Invalid booking ID' });
+    }
+
+    const booking = await mongoose.model('membershipbooking').findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ error: 'Membership booking not found' });
+    }
+
+    // Toggle the discontinued status
+    booking.discontinued = !booking.discontinued;
+    await booking.save();
+
+    res.json({ 
+      message: `Booking has been ${booking.discontinued ? 'discontinued' : 'reactivated'}.`,
+      booking
+    });
+  } catch (err) {
+    console.error('Error toggling discontinued status:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
