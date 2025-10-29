@@ -1,4 +1,5 @@
 const express = require('express');
+require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 4044;
 const mongoose = require("mongoose");
@@ -8,7 +9,6 @@ const path = require("path");
 const cors = require("cors");
 const cron = require('node-cron');
 const fs = require("fs");
-require('dotenv').config();
 
 // Schedule cron job to empty certain directories daily at 01:01 AM
 cron.schedule('01 01 * * *', () => {

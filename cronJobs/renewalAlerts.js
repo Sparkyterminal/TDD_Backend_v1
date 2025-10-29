@@ -1,12 +1,12 @@
 // Daily renewal alert cron job
 const mongoose = require('mongoose');
 const axios = require('axios');
-const MembershipBooking = require('./modals/MembershipBooking');
+const MembershipBooking = require('../modals/MembershipBooking');
 
 // Connect to database
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.DANCE_DISTRICT_DB_URL || "mongodb://127.0.0.1:27017/dance_district");
+    await mongoose.connect(process.env.DANCE_DISTRICT_DB_URL || "mongodb+srv://naveengc3005_db_user:waTdC4tnosVOJCcO@thedancedistrict.41vcz15.mongodb.net/dance_district");
     console.log('Database connected for renewal alerts');
   } catch (error) {
     console.error('Database connection error:', error);
@@ -45,7 +45,7 @@ async function sendRenewalWhatsAppMessage(booking) {
     const renewalLink = `https://www.thedancedistrict.in/renewalform/${booking._id}`;
     
     // Contact number
-    const contactNumber = '+91 9876543210'; // Replace with your contact number
+    const contactNumber = '+91 8073139244.  '; // Replace with your contact number
 
     // Prepare WhatsApp template message (using correct format)
     const messagePayload = {
