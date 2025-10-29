@@ -2830,115 +2830,73 @@ exports.manualRenewMembership = async (req, res) => {
       planId,
       userId,
       batchId,
-      billing_interval,
-      start_date,
-      end_date,
-      payment_status
+      billing_interval
     } = req.body;
 
-    // Validate IDs
+    // Validate membershipBookingId
     if (!isValidObjectId(membershipBookingId)) {
       return res.status(400).json({ error: 'Invalid membership booking ID' });
     }
-    if (!isValidObjectId(planId)) {
-      return res.status(400).json({ error: 'Invalid planId' });
-    }
-    if (userId && !isValidObjectId(userId)) {
-      return res.status(400).json({ error: 'Invalid userId' });
-    }
-    if (batchId && !isValidObjectId(batchId)) {
-      return res.status(400).json({ error: 'Invalid batchId' });
-    }
 
-    // Validate existing booking
     const existingBooking = await MembershipBooking.findById(membershipBookingId);
     if (!existingBooking) {
       return res.status(404).json({ error: 'Membership booking not found' });
     }
 
     // Validate plan
-    const plan = await MembershipPlan.findById(planId);
-    if (!plan || !plan.is_active) {
+    if (!isValidObjectId(planId)) {
+      return res.status(400).json({ error: 'Invalid planId' });
+    }
+    const newPlan = await MembershipPlan.findById(planId);
+    if (!newPlan || !newPlan.is_active) {
       return res.status(404).json({ error: 'Membership plan not found or inactive' });
     }
 
     // Validate batch
-    const batch = plan.batches.find(b => b._id.toString() === batchId);
+    const batch = newPlan.batches.find(b => b._id.toString() === batchId);
     if (!batch) {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
-    // Fetch user details if userId is provided
-    let userDetails = {};
-    if (userId) {
-      const user = await User.findById(userId).lean();
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      userDetails = {
-        name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'N/A',
-        age: user.age || 0,
-        email: (user.email_data && user.email_data.temp_email_id) || user.email || 'N/A',
-        mobile_number: (user.phone_data && user.phone_data.mobile_number) || 'N/A',
-        gender: user.gender || 'Other'
-      };
-    }
+    // Calculate dates
+    const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
+    const startDate = existingBooking.end_date || new Date();
+    const effectiveStartDate = startDate > new Date() ? startDate : new Date();
+    const endDate = new Date(effectiveStartDate);
+    endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-    // Validate dates
-    let startDateObj, endDateObj;
-    if (start_date) {
-      startDateObj = new Date(start_date);
-      if (isNaN(startDateObj.getTime())) {
-        return res.status(400).json({ error: 'Invalid start date format' });
-      }
-    } else {
-      startDateObj = new Date();
-    }
-    if (end_date) {
-      endDateObj = new Date(end_date);
-      if (isNaN(endDateObj.getTime())) {
-        return res.status(400).json({ error: 'Invalid end date format' });
-      }
-    } else {
-      // Default to adding months based on billing interval
-      const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
-      endDateObj = new Date(startDateObj);
-      endDateObj.setMonth(endDateObj.getMonth() + monthsToAdd);
-    }
-
-    // Build renewal data including user snapshot info and billing_interval
+    // Create renewal record directly
     const renewalData = {
       plan: planId,
       batchId: batch._id,
-      user: userId || existingBooking.user,
-      billing_interval: billing_interval || existingBooking.billing_interval,
-      start_date: startDateObj,
-      end_date: endDateObj,
-      paymentResult: { status: payment_status || 'initiated' },
-      name: userDetails.name,
-      age: userDetails.age,
-      email: userDetails.email,
-      mobile_number: userDetails.mobile_number,
-      gender: userDetails.gender
+      user: existingBooking.user,
+      billing_interval,
+      start_date: startDate,
+      end_date: endDate,
+      paymentResult: { status: 'COMPLETED' }, // Mark as completed for manual renewal
+      // Optionally carry over user info or update as needed
     };
 
-    const newRenewal = await MembershipBooking.create(renewalData);
+    const renewalBooking = await MembershipBooking.create(renewalData);
 
-    const populatedRenewal = await MembershipBooking.findById(newRenewal._id)
+    // Populate the response
+    const populatedRenewal = await MembershipBooking.findById(renewalBooking._id)
       .populate('plan', 'name price billing_interval plan_for')
       .populate('user', 'first_name last_name email_data phone_data')
       .lean();
 
-    res.status(201).json({
+    // Optionally notify user here
+
+    return res.status(201).json({
       success: true,
-      message: 'Membership renewed successfully',
+      message: 'Membership renewed manually by admin.',
       data: populatedRenewal
     });
-  } catch (error) {
-    console.error('Error in manual renewal:', error);
-    res.status(500).json({ error: 'Server error' });
+  } catch (err) {
+    console.error('Admin manual renewal error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
-}
+};
 
 
 exports.toggleDiscontinued = async (req, res) => {
