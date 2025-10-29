@@ -2822,6 +2822,7 @@ exports.createUsersForExistingBookings = async (req, res) => {
   }
 };
 
+
 exports.manualRenewMembership = async (req, res) => {
   try {
     const { membershipBookingId } = req.params;
@@ -2877,7 +2878,7 @@ exports.manualRenewMembership = async (req, res) => {
       userDetails = {
         name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'N/A',
         age: user.age || 0,
-        email: user.email_data || user.email || 'N/A',
+        email: (user.email_data && user.email_data.temp_email_id) || user.email || 'N/A',
         mobile_number: (user.phone_data && user.phone_data.mobile_number) || 'N/A',
         gender: user.gender || 'Other'
       };
@@ -2905,11 +2906,12 @@ exports.manualRenewMembership = async (req, res) => {
       endDateObj.setMonth(endDateObj.getMonth() + monthsToAdd);
     }
 
-    // Build renewal data including user snapshot info
+    // Build renewal data including user snapshot info and billing_interval
     const renewalData = {
       plan: planId,
       batchId: batch._id,
       user: userId || existingBooking.user,
+      billing_interval: billing_interval || existingBooking.billing_interval,
       start_date: startDateObj,
       end_date: endDateObj,
       paymentResult: { status: payment_status || 'initiated' },
@@ -2921,6 +2923,7 @@ exports.manualRenewMembership = async (req, res) => {
     };
 
     const newRenewal = await MembershipBooking.create(renewalData);
+
     const populatedRenewal = await MembershipBooking.findById(newRenewal._id)
       .populate('plan', 'name price billing_interval plan_for')
       .populate('user', 'first_name last_name email_data phone_data')
@@ -2935,7 +2938,7 @@ exports.manualRenewMembership = async (req, res) => {
     console.error('Error in manual renewal:', error);
     res.status(500).json({ error: 'Server error' });
   }
-};
+}
 
 
 exports.toggleDiscontinued = async (req, res) => {
