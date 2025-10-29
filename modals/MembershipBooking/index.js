@@ -66,6 +66,10 @@ const membershipBookingSchema = new Schema(
             type: Date,
             required: false
         },
+        discontinued: {
+            type: Boolean,
+            default: false
+          },
        
     },
     {

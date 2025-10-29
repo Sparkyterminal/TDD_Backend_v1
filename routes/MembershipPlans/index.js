@@ -479,5 +479,8 @@ router.post('/create-users-for-bookings', plansController.createUsersForExisting
 // Manual booking management routes
 router.post('/manual-booking', plansController.createManualBooking);
 router.put('/manual-booking/:id', plansController.updateManualBooking);
+router.post('/renew-manual/:membershipBookingId',  plansController.manualRenewMembership);
+router.patch('/booking/:bookingId/discontinued', plansController.toggleDiscontinued);
+
 
 module.exports = router;
