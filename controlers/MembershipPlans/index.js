@@ -2902,23 +2902,21 @@ exports.manualRenewMembership = async (req, res) => {
     const { membershipBookingId } = req.params;
     const {
       planId,
-      userId,
       batchId,
-      billing_interval
+      billing_interval,
+      start_date, // optional: allow admin to specify new start date if needed
+      end_date    // optional: allow admin to specify new end date if needed
     } = req.body;
 
-    // Validate membershipBookingId
     if (!isValidObjectId(membershipBookingId)) {
       return res.status(400).json({ error: 'Invalid membership booking ID' });
     }
 
-    // Fetch existing booking
     const existingBooking = await MembershipBooking.findById(membershipBookingId);
     if (!existingBooking) {
       return res.status(404).json({ error: 'Membership booking not found' });
     }
 
-    // Validate planId
     if (!isValidObjectId(planId)) {
       return res.status(400).json({ error: 'Invalid planId' });
     }
@@ -2927,81 +2925,61 @@ exports.manualRenewMembership = async (req, res) => {
       return res.status(404).json({ error: 'Membership plan not found or inactive' });
     }
 
-    // Validate batch within the new plan
     const batch = newPlan.batches.find(b => b._id.toString() === batchId);
     if (!batch) {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
-    // Determine userId to use
-    let userIdToUse = existingBooking.user; // default to existing booking user
-    if (userId) {
-      if (!isValidObjectId(userId)) {
-        return res.status(400).json({ error: 'Invalid userId' });
-      }
-      const userExists = await User.exists({ _id: userId });
-      if (!userExists) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      userIdToUse = userId; // assign new userId
-    }
-
-    // Fetch user details for required fields
-    const userDetails = await User.findById(userIdToUse).lean();
-    if (!userDetails) {
-      return res.status(404).json({ error: 'User details not found' });
-    }
-    const name = `${userDetails.first_name || ''} ${userDetails.last_name || ''}`.trim() || 'N/A';
-    const age = userDetails.age || 0;
-    const email = (userDetails.email_data && userDetails.email_data.temp_email_id) || userDetails.email || 'N/A';
-    const mobile_number = (userDetails.phone_data && userDetails.phone_data.mobile_number) || 'N/A';
-    const gender = userDetails.gender || 'Other';
-
-    // Calculate renewal dates
+    // Calculate new dates if not provided
     const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
-    const startDate = existingBooking.end_date || new Date();
-    const effectiveStartDate = startDate > new Date() ? startDate : new Date();
-    const endDate = new Date(effectiveStartDate);
-    endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-    // Prepare renewal data including required fields
-    const renewalData = {
-      plan: planId,
-      batchId: batch._id,
-      user: userIdToUse,
-      billing_interval,
-      start_date: startDate,
-      end_date: endDate,
-      paymentResult: { status: 'COMPLETED' }, // mark as paid for manual renewal
+    // Use provided dates or calculate from existing booking's current end date
+    const newStartDate = start_date ? new Date(start_date) : (existingBooking.end_date > new Date() ? existingBooking.end_date : new Date());
+    if (isNaN(newStartDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid start_date format' });
+    }
 
-      // Mandatory user info for schema validation
-      name,
-      age,
-      email,
-      mobile_number,
-      gender
-    };
+    let newEndDate;
+    if (end_date) {
+      newEndDate = new Date(end_date);
+      if (isNaN(newEndDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid end_date format' });
+      }
+    } else {
+      newEndDate = new Date(newStartDate);
+      newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
+    }
 
-    // Create renewal record
-    const renewalBooking = await MembershipBooking.create(renewalData);
+    // Update existing booking with new plan, batch and extended dates
+    existingBooking.plan = planId;
+    existingBooking.batchId = batch._id;
+    existingBooking.billing_interval = billing_interval;
+    existingBooking.start_date = newStartDate;
+    existingBooking.end_date = newEndDate;
+
+    // Mark payment as completed since admin is doing manual renewal
+    existingBooking.paymentResult = { status: 'COMPLETED' };
+
+    await existingBooking.save();
 
     // Populate for response
-    const populatedRenewal = await MembershipBooking.findById(renewalBooking._id)
+    const populatedBooking = await MembershipBooking.findById(existingBooking._id)
       .populate('plan', 'name price billing_interval plan_for')
       .populate('user', 'first_name last_name email_data phone_data')
       .lean();
 
-    // Send response
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
-      message: 'Membership renewed manually by admin.',
-      data: populatedRenewal
+      message: 'Membership successfully renewed by updating existing booking.',
+      data: populatedBooking
     });
+
   } catch (err) {
-    console.error('Admin manual renewal error:', err);
+    console.error('Admin manual renewal update error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 
 
