@@ -2933,7 +2933,7 @@ exports.manualRenewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
-    // Validate userId if provided
+    // Determine userId to use
     let userIdToUse = existingBooking.user; // default to existing booking user
     if (userId) {
       if (!isValidObjectId(userId)) {
@@ -2946,6 +2946,17 @@ exports.manualRenewMembership = async (req, res) => {
       userIdToUse = userId; // assign new userId
     }
 
+    // Fetch user details for required fields
+    const userDetails = await User.findById(userIdToUse).lean();
+    if (!userDetails) {
+      return res.status(404).json({ error: 'User details not found' });
+    }
+    const name = `${userDetails.first_name || ''} ${userDetails.last_name || ''}`.trim() || 'N/A';
+    const age = userDetails.age || 0;
+    const email = (userDetails.email_data && userDetails.email_data.temp_email_id) || userDetails.email || 'N/A';
+    const mobile_number = (userDetails.phone_data && userDetails.phone_data.mobile_number) || 'N/A';
+    const gender = userDetails.gender || 'Other';
+
     // Calculate renewal dates
     const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
     const startDate = existingBooking.end_date || new Date();
@@ -2953,7 +2964,7 @@ exports.manualRenewMembership = async (req, res) => {
     const endDate = new Date(effectiveStartDate);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
-    // Prepare renewal data
+    // Prepare renewal data including required fields
     const renewalData = {
       plan: planId,
       batchId: batch._id,
@@ -2961,7 +2972,14 @@ exports.manualRenewMembership = async (req, res) => {
       billing_interval,
       start_date: startDate,
       end_date: endDate,
-      paymentResult: { status: 'COMPLETED' } // mark as paid for manual renewal
+      paymentResult: { status: 'COMPLETED' }, // mark as paid for manual renewal
+
+      // Mandatory user info for schema validation
+      name,
+      age,
+      email,
+      mobile_number,
+      gender
     };
 
     // Create renewal record
