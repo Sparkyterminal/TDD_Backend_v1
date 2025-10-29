@@ -33,7 +33,7 @@ cron.schedule('01 01 * * *', () => {
 });
 
 // Schedule renewal alerts daily at 10:00 AM
-cron.schedule('0 10 * * *', async () => {
+cron.schedule('56 10 * * *', async () => {
     console.log('Running daily renewal alerts...');
     try {
         const { sendDailyRenewalAlerts } = require('./cronJobs/renewalAlerts');
@@ -42,6 +42,7 @@ cron.schedule('0 10 * * *', async () => {
         console.error('Error in renewal alerts cron job:', error);
     }
 });
+
 
 // Enable CORS
 app.use(cors());
