@@ -2822,7 +2822,6 @@ exports.createUsersForExistingBookings = async (req, res) => {
   }
 };
 
-
 exports.manualRenewMembership = async (req, res) => {
   try {
     const { membershipBookingId } = req.params;
@@ -2868,6 +2867,22 @@ exports.manualRenewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
+    // Fetch user details if userId is provided
+    let userDetails = {};
+    if (userId) {
+      const user = await User.findById(userId).lean();
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      userDetails = {
+        name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'N/A',
+        age: user.age || 0,
+        email: user.email_data || user.email || 'N/A',
+        mobile_number: (user.phone_data && user.phone_data.mobile_number) || 'N/A',
+        gender: user.gender || 'Other'
+      };
+    }
+
     // Validate dates
     let startDateObj, endDateObj;
     if (start_date) {
@@ -2890,20 +2905,22 @@ exports.manualRenewMembership = async (req, res) => {
       endDateObj.setMonth(endDateObj.getMonth() + monthsToAdd);
     }
 
-    // Create or update renewal booking
+    // Build renewal data including user snapshot info
     const renewalData = {
       plan: planId,
       batchId: batch._id,
       user: userId || existingBooking.user,
       start_date: startDateObj,
       end_date: endDateObj,
-      paymentResult: { status: payment_status || 'initiated' }
+      paymentResult: { status: payment_status || 'initiated' },
+      name: userDetails.name,
+      age: userDetails.age,
+      email: userDetails.email,
+      mobile_number: userDetails.mobile_number,
+      gender: userDetails.gender
     };
 
-    // Assuming renewal creates a new booking, or you can update existing as needed
     const newRenewal = await MembershipBooking.create(renewalData);
-
-    // Populate for response
     const populatedRenewal = await MembershipBooking.findById(newRenewal._id)
       .populate('plan', 'name price billing_interval plan_for')
       .populate('user', 'first_name last_name email_data phone_data')
@@ -2919,6 +2936,8 @@ exports.manualRenewMembership = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+
 exports.toggleDiscontinued = async (req, res) => {
   try {
     const { bookingId } = req.params;
