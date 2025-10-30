@@ -9,8 +9,12 @@ const clientVersion = 1
 const env = Env.PRODUCTION
 
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
-function isValidObjectId(id) {
-    return mongoose.Types.ObjectId.isValid(id);
+function isValidObjectIdChecked(id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return false;
+  }
+  const objectId = new mongoose.Types.ObjectId(id);
+  return objectId.toString() === id.toString();
 }
 
 exports.createWorkshop = async (req, res) => {
@@ -561,17 +565,19 @@ exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
 
+    // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender || price == null) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (!isValidObjectId(workshopId)) {
+
+    if (!isValidObjectIdChecked(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
     }
     if (!Array.isArray(batchIds) || batchIds.length === 0) {
       return res.status(400).json({ error: 'batchIds array is required' });
     }
     for (const bId of batchIds) {
-      if (!isValidObjectId(bId)) {
+      if (!isValidObjectIdChecked(bId)) {
         return res.status(400).json({ error: 'Invalid batchId in batchIds' });
       }
     }
@@ -605,10 +611,10 @@ exports.bookWorkshop = async (req, res) => {
       }
     }
 
-    // For reference, build pricingDetails as CUSTOM since price comes from front end
+    // Create pricingDetails with valid enum 'REGULAR'
     const pricingDetails = batchIds.map(bId => ({
       batch_id: bId,
-      pricing_tier: 'CUSTOM',
+      pricing_tier: 'REGULAR', // use valid enum value only
       price: price / batchIds.length
     }));
 
@@ -645,7 +651,7 @@ exports.bookWorkshop = async (req, res) => {
     console.error('Error in booking workshop:', error);
     return res.status(500).json({ error: `Server error: ${error.message}` });
   }
-};
+}
 
 exports.getStatusOfPayment = async (req, res) => {
   console.log('getStatusOfPayment invoked with query:', req.query);
