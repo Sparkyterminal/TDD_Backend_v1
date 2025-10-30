@@ -310,7 +310,7 @@ exports.bookWorkshop = async (req, res) => {
         tier = 'ON_THE_SPOT';
         price = b.pricing.on_the_spot.price;
       }
-      totalPrice =  price + 50;
+      totalPrice += price + 50;
       pricingDetails.push({ batch_id: b._id, pricing_tier: tier, price });
     }
 
