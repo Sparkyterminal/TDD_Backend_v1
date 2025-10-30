@@ -623,7 +623,7 @@ exports.bookWorkshop = async (req, res) => {
       gender,
       status: 'INITIATED',
       pricing_details: pricingDetails,
-      price_charged: price,
+      price_charged: price + 50,
       paymentResult: { status: 'initiated' }
     });
 
