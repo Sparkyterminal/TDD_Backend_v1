@@ -9,12 +9,8 @@ const clientVersion = 1
 const env = Env.PRODUCTION
 
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
-function isValidObjectIdChecked(id) {
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return false;
-  }
-  const objectId = new mongoose.Types.ObjectId(id);
-  return objectId.toString() === id.toString();
+function isValidObjectId(id) {
+    return mongoose.Types.ObjectId.isValid(id);
 }
 
 exports.createWorkshop = async (req, res) => {
@@ -559,7 +555,6 @@ exports.cancelWorkshop = async (req, res) => {
 //     return res.status(500).send('Internal server error during payment status check');
 //   }
 // };
-
 
 exports.bookWorkshop = async (req, res) => {
   try {
