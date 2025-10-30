@@ -565,14 +565,14 @@ exports.bookWorkshop = async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!isValidObjectIdChecked(workshopId)) {
+    if (!isValidObjectId(workshopId)) {
       return res.status(400).json({ error: 'Invalid workshopId' });
     }
     if (!Array.isArray(batchIds) || batchIds.length === 0) {
       return res.status(400).json({ error: 'batchIds array is required' });
     }
     for (const bId of batchIds) {
-      if (!isValidObjectIdChecked(bId)) {
+      if (!isValidObjectId(bId)) {
         return res.status(400).json({ error: 'Invalid batchId in batchIds' });
       }
     }
@@ -606,10 +606,10 @@ exports.bookWorkshop = async (req, res) => {
       }
     }
 
-    // Create pricingDetails with valid enum 'REGULAR'
+    // Use valid enum value for pricing_tier: 'REGULAR'
     const pricingDetails = batchIds.map(bId => ({
       batch_id: bId,
-      pricing_tier: 'REGULAR', // use valid enum value only
+      pricing_tier: 'REGULAR',
       price: price / batchIds.length
     }));
 
@@ -642,11 +642,12 @@ exports.bookWorkshop = async (req, res) => {
     const paymentResponse = await client.pay(paymentRequest);
 
     return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl, bookingId: booking._id });
+
   } catch (error) {
     console.error('Error in booking workshop:', error);
     return res.status(500).json({ error: `Server error: ${error.message}` });
   }
-}
+};
 
 exports.getStatusOfPayment = async (req, res) => {
   console.log('getStatusOfPayment invoked with query:', req.query);
