@@ -633,7 +633,7 @@ exports.bookWorkshop = async (req, res) => {
 
     const merchantOrderId = booking._id.toString();
     const redirectUrl = `https://www.thedancedistrict.in/api/workshop/check-status?merchantOrderId=${merchantOrderId}`;
-    const priceInPaise = Math.round(price * 100);
+    const priceInPaise = Math.round(totalPrice * 100);
 
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
       .merchantOrderId(merchantOrderId)
