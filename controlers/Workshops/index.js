@@ -561,7 +561,6 @@ exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
 
-    // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender || price == null) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -570,6 +569,11 @@ exports.bookWorkshop = async (req, res) => {
     }
     if (!Array.isArray(batchIds) || batchIds.length === 0) {
       return res.status(400).json({ error: 'batchIds array is required' });
+    }
+    for (const bId of batchIds) {
+      if (!isValidObjectId(bId)) {
+        return res.status(400).json({ error: 'Invalid batchId in batchIds' });
+      }
     }
     if (typeof age !== 'number' || age < 0) {
       return res.status(400).json({ error: 'Invalid age' });
@@ -581,44 +585,33 @@ exports.bookWorkshop = async (req, res) => {
       return res.status(400).json({ error: 'Invalid price' });
     }
 
-    // Get latest workshop document
     const workshop = await Workshop.findOne({
       _id: workshopId,
       is_cancelled: false,
-      is_active: true,
-      'batches._id': { $in: batchIds }
+      is_active: true
     });
 
     if (!workshop) {
       return res.status(404).json({ error: 'Workshop not found or unavailable.' });
     }
 
-    // Validate all batchIds exist and are available
-    const validBatches = [];
     for (const bId of batchIds) {
-      if (!isValidObjectId(bId)) {
-        return res.status(400).json({ error: 'Invalid batchId in batchIds' });
-      }
-      const b = workshop?.batches?.id(bId);
-      if (!b || b.is_cancelled) {
+      const batch = workshop.batches.id(bId);
+      if (!batch || batch.is_cancelled) {
         return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
       }
-      if (typeof b.capacity === 'number' && b.capacity <= 0) {
+      if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
         return res.status(400).json({ error: 'No more slots available for one of the batches.' });
       }
-      validBatches.push(b);
     }
 
-    // You can optionally build pricingDetails for reference but do not rely on it to calculate total price
-    const pricingDetails = validBatches.map(b => {
-      return {
-        batch_id: b._id,
-        pricing_tier: 'CUSTOM', // since price is from front end, mark as CUSTOM or remove tier logic here
-        price: price / batchIds.length // you may adjust if you want to split price per batch
-      };
-    });
+    // For reference, build pricingDetails as CUSTOM since price comes from front end
+    const pricingDetails = batchIds.map(bId => ({
+      batch_id: bId,
+      pricing_tier: 'CUSTOM',
+      price: price / batchIds.length
+    }));
 
-    // Create booking with front-end passed price
     const booking = new Booking({
       workshop: workshopId,
       batch_ids: batchIds,
@@ -648,12 +641,11 @@ exports.bookWorkshop = async (req, res) => {
     const paymentResponse = await client.pay(paymentRequest);
 
     return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl, bookingId: booking._id });
-
   } catch (error) {
     console.error('Error in booking workshop:', error);
-    return res.status(500).json({ error: 'Server error' });
+    return res.status(500).json({ error: `Server error: ${error.message}` });
   }
-}
+};
 
 exports.getStatusOfPayment = async (req, res) => {
   console.log('getStatusOfPayment invoked with query:', req.query);
