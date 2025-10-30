@@ -559,7 +559,7 @@ exports.cancelWorkshop = async (req, res) => {
 exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
-
+    
     // Validate required fields
     if (!workshopId || !name || !age || !email || !mobile_number || !gender || price == null) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -612,7 +612,9 @@ exports.bookWorkshop = async (req, res) => {
       pricing_tier: 'REGULAR',
       price: price / batchIds.length
     }));
+    const processingFee = 50;
 
+    let totalPrice = price + processingFee
     const booking = new Booking({
       workshop: workshopId,
       batch_ids: batchIds,
@@ -623,7 +625,7 @@ exports.bookWorkshop = async (req, res) => {
       gender,
       status: 'INITIATED',
       pricing_details: pricingDetails,
-      price_charged: price + 50,
+      price_charged: totalPrice,
       paymentResult: { status: 'initiated' }
     });
 
