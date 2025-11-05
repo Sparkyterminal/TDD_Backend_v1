@@ -15,7 +15,7 @@ const jwt = require('jsonwebtoken');
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
 const clientVersion = 1
-const env = Env.PRODUCTION
+const env = Env.SANDBOX
 const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
 function isValidObjectId(id) {
@@ -610,8 +610,8 @@ exports.createBooking = async (req, res) => {
       });
   
       const merchantOrderId = booking._id.toString();
-      const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-      // const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
+      // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
       const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
         .merchantOrderId(merchantOrderId)
         .amount(priceInPaise)
@@ -804,13 +804,15 @@ exports.createBooking = async (req, res) => {
           console.error('Whatsapp error:', whatsappError);
         }
   
-        return res.redirect('https://www.thedancedistrict.in/payment-success');
+        // return res.redirect('https://www.thedancedistrict.in/payment-success');
+        return res.redirect(`http://localhost:5174/payment-success`);
       } else {
         await MembershipBooking.findByIdAndUpdate(bookingId, {
           'paymentResult.status': 'FAILED',
           'paymentResult.phonepeResponse': phonepeResponse
         });
-        return res.redirect('https://www.thedancedistrict.in/payment-failure');
+        // return res.redirect('https://www.thedancedistrict.in/payment-failure');
+        return res.redirect(`http://localhost:5174/payment-failure`);
       }
     } catch (err) {
       console.error('checkMembershipStatus:', err);
@@ -1840,7 +1842,7 @@ exports.manualRenewMembership = async (req, res) => {
       planId,
       batchId,
       billing_interval,
-      start_date, // optional: allow admin to specify new start date if needed
+      renewal_date, // optional: admin-specified renewal date
       end_date    // optional: allow admin to specify new end date if needed
     } = req.body;
 
@@ -1866,13 +1868,13 @@ exports.manualRenewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
-    // Calculate new dates if not provided
+    // Calculate new dates
     const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
 
-    // Use provided dates or calculate from existing booking's current end date
-    const newStartDate = start_date ? new Date(start_date) : (existingBooking.end_date > new Date() ? existingBooking.end_date : new Date());
-    if (isNaN(newStartDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid start_date format' });
+    // Determine renewal date (defaults to now if not provided)
+    const newRenewalDate = renewal_date ? new Date(renewal_date) : new Date();
+    if (isNaN(newRenewalDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid renewal_date format' });
     }
 
     let newEndDate;
@@ -1882,7 +1884,7 @@ exports.manualRenewMembership = async (req, res) => {
         return res.status(400).json({ error: 'Invalid end_date format' });
       }
     } else {
-      newEndDate = new Date(newStartDate);
+      newEndDate = new Date(newRenewalDate);
       newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
     }
 
@@ -1892,8 +1894,8 @@ exports.manualRenewMembership = async (req, res) => {
     existingBooking.billing_interval = billing_interval;
     // Do not change start_date on manual renewal
     existingBooking.end_date = newEndDate;
-    // For renewals, stamp the renewal date as the date of renewal action
-    existingBooking.renewal_date = new Date();
+    // For renewals, set the renewal date (provided or now)
+    existingBooking.renewal_date = newRenewalDate;
 
     // Mark payment as completed since admin is doing manual renewal
     existingBooking.paymentResult = { status: 'COMPLETED' };
@@ -1979,11 +1981,18 @@ exports.updateUserAndBooking = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found for this user' });
     }
 
-    const allowedBookingFields = ['name', 'age', 'email', 'mobile_number', 'gender', 'discontinued'];
+    const allowedBookingFields = ['name', 'age', 'email', 'mobile_number', 'gender', 'discontinued', 'renewal_date', 'start_date', 'end_date'];
     const bookingFieldsToUpdate = {};
     allowedBookingFields.forEach(field => {
       if (field in updateBookingData) {
-        bookingFieldsToUpdate[field] = updateBookingData[field];
+        if (field === 'renewal_date' || field === 'start_date' || field === 'end_date') {
+          const rd = new Date(updateBookingData[field]);
+          if (!isNaN(rd.getTime())) {
+            bookingFieldsToUpdate[field] = rd;
+          }
+        } else {
+          bookingFieldsToUpdate[field] = updateBookingData[field];
+        }
       }
     });
 

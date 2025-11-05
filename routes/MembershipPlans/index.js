@@ -484,6 +484,9 @@ const validateUserAndBookingUpdate = [
   body('booking.mobile_number').optional().isString(),
   body('booking.gender').optional().isIn(['Male', 'Female', 'Other']),
   body('booking.discontinued').optional().isBoolean(),
+  body('booking.start_date').optional().isISO8601().toDate(),
+  body('booking.end_date').optional().isISO8601().toDate(),
+  body('booking.renewal_date').optional().isISO8601().toDate(),
 ];
 
 // Route
