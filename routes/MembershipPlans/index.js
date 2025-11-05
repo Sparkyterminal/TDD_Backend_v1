@@ -458,6 +458,43 @@ const validatePagination = [
     .withMessage('Search term must not exceed 100 characters')
 ];
 
+
+
+const validateUserId = [
+  param('userId').isMongoId().withMessage('Invalid user ID')
+];
+const validateBookingId = [
+  param('bookingId').isMongoId().withMessage('Invalid booking ID')
+];
+
+const validateUserAndBookingUpdate = [
+  body('user').optional().isObject(),
+  body('user.first_name').optional().isString().notEmpty().withMessage('First name required'),
+  body('user.last_name').optional().isString().notEmpty().withMessage('Last name required'),
+  body('user.email_data.email_id').optional().isEmail().withMessage('Valid email required'),
+  body('user.phone_data.phone_number').optional().isString().notEmpty().withMessage('Phone number required'),
+  body('user.role').optional().isIn(['ADMIN', 'COACH', 'USER']).withMessage('Invalid role'),
+  body('user.is_active').optional().isBoolean(),
+  body('user.is_archived').optional().isBoolean(),
+
+  body('booking').optional().isObject(),
+  body('booking.name').optional().isString(),
+  body('booking.age').optional().isInt({ min: 0 }),
+  body('booking.email').optional().isEmail(),
+  body('booking.mobile_number').optional().isString(),
+  body('booking.gender').optional().isIn(['Male', 'Female', 'Other']),
+  body('booking.discontinued').optional().isBoolean(),
+];
+
+// Route
+router.put(
+  '/user-and-booking/:userId/:bookingId',
+  validateUserId,
+  validateBookingId,
+  validateUserAndBookingUpdate,
+  plansController.updateUserAndBooking
+);
+
 // Routes
 router.post('/', validateMembershipPlan, plansController.createPlan);
 router.get('/', validatePagination, plansController.getPlans);

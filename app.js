@@ -59,7 +59,7 @@ app.use(express.json({ limit: payloadLimit }));
 app.use(express.urlencoded({ limit: payloadLimit, extended: true }));
 
 // Serve static assets folder
-const API_ROOT = '/api/';
+const API_ROOT = '/';
 app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
 
 // Disable etag for fresh content on each request
