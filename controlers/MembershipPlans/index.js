@@ -1947,6 +1947,34 @@ exports.toggleDiscontinued = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+// Explicitly set discontinued to false (reactivate)
+exports.setDiscontinuedFalse = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!isValidObjectId(bookingId)) {
+      return res.status(400).json({ error: 'Invalid booking ID' });
+    }
+
+    const booking = await MembershipBooking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ error: 'Membership booking not found' });
+    }
+
+    if (booking.discontinued === false) {
+      return res.json({ message: 'Booking already active.', booking });
+    }
+
+    booking.discontinued = false;
+    await booking.save();
+
+    res.json({ message: 'Booking reactivated.', booking });
+  } catch (err) {
+    console.error('Error reactivating booking:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
 exports.updateUserAndBooking = async (req, res) => {
   try {
     const { userId, bookingId } = req.params;

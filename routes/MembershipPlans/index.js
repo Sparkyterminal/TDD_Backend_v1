@@ -521,6 +521,7 @@ router.post('/manual-booking', plansController.createManualBooking);
 router.put('/manual-booking/:id', plansController.updateManualBooking);
 router.post('/renew-manual/:membershipBookingId',  plansController.manualRenewMembership);
 router.patch('/booking/:bookingId/discontinued', plansController.toggleDiscontinued);
+router.patch('/booking/:bookingId/reactivate', plansController.setDiscontinuedFalse);
 
 
 module.exports = router;
