@@ -66,6 +66,10 @@ const membershipBookingSchema = new Schema(
             type: Date,
             required: false
         },
+        renewal_date: {
+            type: Date,
+            required: false
+        },
         discontinued: {
             type: Boolean,
             default: false
@@ -100,6 +104,10 @@ membershipBookingSchema.pre('validate', async function (next) {
         if (!interval || !INTERVAL_TO_MONTHS[interval]) return next();
 
         const start = this.start_date ? new Date(this.start_date) : new Date();
+        // Set renewal_date to start_date for initial creation when not provided
+        if (!this.renewal_date) {
+            this.renewal_date = new Date(start);
+        }
         const monthsToAdd = INTERVAL_TO_MONTHS[interval];
         const end = new Date(start);
         end.setMonth(end.getMonth() + monthsToAdd);

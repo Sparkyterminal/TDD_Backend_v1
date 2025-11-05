@@ -674,7 +674,8 @@ exports.createBooking = async (req, res) => {
             'paymentResult.paymentDate': new Date(),
             'paymentResult.phonepeResponse': phonepeResponse,
             start_date: newStartDate,
-            end_date: newEndDate
+            end_date: newEndDate,
+            renewal_date: new Date()
           });
   
           try {
@@ -713,10 +714,14 @@ exports.createBooking = async (req, res) => {
           }
   
           await MembershipBooking.findByIdAndUpdate(bookingId, {
-            user: user._id,
-            'paymentResult.status': 'COMPLETED',
-            'paymentResult.paymentDate': new Date(),
-            'paymentResult.phonepeResponse': phonepeResponse
+            $set: {
+              user: user._id,
+              'paymentResult.status': 'COMPLETED',
+              'paymentResult.paymentDate': new Date(),
+              'paymentResult.phonepeResponse': phonepeResponse,
+              // For initial booking, renewal_date should equal start_date
+              renewal_date: booking.start_date || new Date()
+            }
           });
   
           try {
@@ -1593,6 +1598,7 @@ exports.createManualBooking = async (req, res) => {
       billing_interval,
       start_date: startDate,
       end_date: endDate,
+      renewal_date: startDate,
       paymentResult: {
         status: payment_status || 'initiated'
       }
@@ -1667,6 +1673,16 @@ exports.updateManualBooking = async (req, res) => {
       }
     }
 
+    if (updateData.renewal_date) {
+      const renewalDate = new Date(updateData.renewal_date);
+      if (isNaN(renewalDate.getTime())) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid renewal date format' 
+        });
+      }
+    }
+
     // Prepare update data
     const updateFields = {};
     if (updateData.planId) updateFields.plan = updateData.planId;
@@ -1680,6 +1696,7 @@ exports.updateManualBooking = async (req, res) => {
     if (updateData.billing_interval) updateFields.billing_interval = updateData.billing_interval;
     if (updateData.start_date) updateFields.start_date = new Date(updateData.start_date);
     if (updateData.end_date) updateFields.end_date = new Date(updateData.end_date);
+    if (updateData.renewal_date) updateFields.renewal_date = new Date(updateData.renewal_date);
     if (updateData.payment_status) {
       updateFields['paymentResult.status'] = updateData.payment_status;
     }
@@ -1875,6 +1892,8 @@ exports.manualRenewMembership = async (req, res) => {
     existingBooking.billing_interval = billing_interval;
     existingBooking.start_date = newStartDate;
     existingBooking.end_date = newEndDate;
+    // For renewals, stamp the renewal date as the date of renewal action
+    existingBooking.renewal_date = new Date();
 
     // Mark payment as completed since admin is doing manual renewal
     existingBooking.paymentResult = { status: 'COMPLETED' };
@@ -1929,36 +1948,37 @@ exports.toggleDiscontinued = async (req, res) => {
 exports.updateUserAndBooking = async (req, res) => {
   try {
     const { userId, bookingId } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ message: 'Invalid user ID' });
     }
-    
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
       return res.status(400).json({ message: 'Invalid booking ID' });
     }
-    
+
     const updateUserData = req.body.user || {};
     const updateBookingData = req.body.booking || {};
-    
+
+    console.log("Received user update data:", updateUserData);
+    console.log("Received booking update data:", updateBookingData);
+
     // Update user document
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateUserData },
       { new: true, runValidators: true }
     );
-    
     if (!updatedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
-    // Update booking document only if it belongs to the user (security check)
+    console.log("Updated user:", updatedUser);
+
+    // Update booking document ownership check
     const booking = await MembershipBooking.findOne({ _id: bookingId, user: userId });
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found for this user' });
     }
-    
-    // Update booking fields (e.g., snapshot user data inside booking)
+
     const allowedBookingFields = ['name', 'age', 'email', 'mobile_number', 'gender', 'discontinued'];
     const bookingFieldsToUpdate = {};
     allowedBookingFields.forEach(field => {
@@ -1966,12 +1986,20 @@ exports.updateUserAndBooking = async (req, res) => {
         bookingFieldsToUpdate[field] = updateBookingData[field];
       }
     });
-    
-    Object.assign(booking, bookingFieldsToUpdate);
-    const updatedBooking = await booking.save();
-    
-    res.json({ user: updatedUser, booking: updatedBooking });
+
+    console.log('Booking fields to update:', bookingFieldsToUpdate);
+    if (Object.keys(bookingFieldsToUpdate).length > 0) {
+      Object.assign(booking, bookingFieldsToUpdate);
+      const updatedBooking = await booking.save();
+      console.log('Updated booking:', updatedBooking);
+      return res.json({ user: updatedUser, booking: updatedBooking });
+    } else {
+      console.log('No booking fields provided to update');
+      return res.json({ user: updatedUser, booking: booking });
+    }
+
   } catch (error) {
+    console.error('Error updating user and booking:', error);
     res.status(500).json({ message: 'Error updating user and booking', error: error.message });
   }
-}
+};
