@@ -11,7 +11,7 @@ router.get('/:id', workshopController.getWorkshop);
 router.put('/:id', workshopController.updateWorkshop);
 router.delete('/:id', workshopController.cancelWorkshop);
 router.get('/:workshopId/bookings', workshopController.getConfirmedBookings);
-router.post('/phonepe-webhook', workshopController.phonepeWebhook);
+// router.post('/phonepe-webhook', workshopController.phonepeWebhook);
 
 
 module.exports = router;
