@@ -1549,6 +1549,26 @@ exports.createManualBooking = async (req, res) => {
       }
     }
 
+    // Guard: prevent creating a new manual booking user record when a user already exists by phone
+    const normalizedInputPhone = String(mobile_number || '').replace(/\D/g, '');
+    if (normalizedInputPhone) {
+      const existingUserByPhone = await User.findOne({
+        $or: [
+          { 'phone_data.phone_number': mobile_number },
+          // match numbers ending with the normalized input (to handle prefixes like +91)
+          { 'phone_data.phone_number': { $regex: `${normalizedInputPhone}$` } }
+        ]
+      }).lean();
+
+      if (existingUserByPhone && (!userId || existingUserByPhone._id.toString() !== String(userId))) {
+        return res.status(400).json({
+          success: false,
+          error: 'User already exists with this phone number',
+          userId: existingUserByPhone._id
+        });
+      }
+    }
+
     // Validate payment status
     const validPaymentStatuses = ['initiated', 'COMPLETED', 'FAILED', 'PENDING'];
     if (payment_status && !validPaymentStatuses.includes(payment_status)) {
@@ -1975,6 +1995,7 @@ exports.setDiscontinuedFalse = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
 exports.updateUserAndBooking = async (req, res) => {
   try {
     const { userId, bookingId } = req.params;
