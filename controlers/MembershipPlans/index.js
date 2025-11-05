@@ -673,7 +673,7 @@ exports.createBooking = async (req, res) => {
             'paymentResult.status': 'COMPLETED',
             'paymentResult.paymentDate': new Date(),
             'paymentResult.phonepeResponse': phonepeResponse,
-            start_date: newStartDate,
+            // Do not modify start_date on renewal
             end_date: newEndDate,
             renewal_date: new Date()
           });
@@ -1890,7 +1890,7 @@ exports.manualRenewMembership = async (req, res) => {
     existingBooking.plan = planId;
     existingBooking.batchId = batch._id;
     existingBooking.billing_interval = billing_interval;
-    existingBooking.start_date = newStartDate;
+    // Do not change start_date on manual renewal
     existingBooking.end_date = newEndDate;
     // For renewals, stamp the renewal date as the date of renewal action
     existingBooking.renewal_date = new Date();
