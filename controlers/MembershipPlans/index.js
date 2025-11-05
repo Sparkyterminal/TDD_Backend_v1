@@ -1091,8 +1091,8 @@ exports.renewMembership = async (req, res) => {
     const merchantOrderId = `ORDER_${Date.now()}_${renewalBooking._id}`;
     console.log('merchantOrderId', merchantOrderId);
 
-    const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
-
+    // const redirectUrl = `https://www.thedancedistrict.in/api/membership-plan/check-status?merchantOrderId=${merchantOrderId}`;
+    const redirectUrl = `http://localhost:4044/membership-plan/check-status?merchantOrderId=${merchantOrderId}`
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
       .merchantOrderId(merchantOrderId)
       .amount(priceInPaise)
