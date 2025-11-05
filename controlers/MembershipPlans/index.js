@@ -1549,23 +1549,49 @@ exports.createManualBooking = async (req, res) => {
       }
     }
 
-    // Guard: prevent creating a new manual booking user record when a user already exists by phone
-    const normalizedInputPhone = String(mobile_number || '').replace(/\D/g, '');
-    if (normalizedInputPhone) {
-      const existingUserByPhone = await User.findOne({
-        $or: [
-          { 'phone_data.phone_number': mobile_number },
-          // match numbers ending with the normalized input (to handle prefixes like +91)
-          { 'phone_data.phone_number': { $regex: `${normalizedInputPhone}$` } }
-        ]
-      }).lean();
-
-      if (existingUserByPhone && (!userId || existingUserByPhone._id.toString() !== String(userId))) {
-        return res.status(400).json({
-          success: false,
-          error: 'User already exists with this phone number',
-          userId: existingUserByPhone._id
+    // Resolve or create user: if userId not provided, try to find by phone/email; otherwise create
+    let resolvedUserId = userId || null;
+    if (!resolvedUserId) {
+      const normalizedInputPhone = String(mobile_number || '').replace(/\D/g, '');
+      let existingUser = null;
+      if (normalizedInputPhone) {
+        existingUser = await User.findOne({
+          $or: [
+            { 'phone_data.phone_number': mobile_number },
+            { 'phone_data.phone_number': { $regex: `${normalizedInputPhone}$` } }
+          ]
         });
+      }
+      if (!existingUser && email) {
+        existingUser = await User.findOne({
+          $or: [
+            { 'email_data.email_id': email },
+            { 'email_data.temp_email_id': email }
+          ]
+        });
+      }
+
+      if (existingUser) {
+        resolvedUserId = existingUser._id;
+      } else {
+        // Create a new user record
+        const [firstName, ...rest] = (name || 'User').trim().split(/\s+/);
+        const lastName = rest.join(' ') || 'User';
+        const bcrypt = require('bcryptjs');
+        const password = `${firstName || 'User'}@123`;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = await User.create({
+          first_name: firstName || 'User',
+          last_name: lastName,
+          media: [],
+          email_data: { temp_email_id: email, is_validated: true },
+          phone_data: { phone_number: mobile_number, is_validated: true },
+          role: 'USER',
+          password: hashedPassword,
+          is_active: true,
+          is_archived: false
+        });
+        resolvedUserId = newUser._id;
       }
     }
 
@@ -1611,7 +1637,7 @@ exports.createManualBooking = async (req, res) => {
     const bookingData = {
       plan: planId,
       batchId: batchId || null,
-      user: userId || null,
+      user: resolvedUserId,
       name,
       age,
       email,
