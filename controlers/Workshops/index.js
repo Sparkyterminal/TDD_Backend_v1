@@ -556,6 +556,123 @@ exports.cancelWorkshop = async (req, res) => {
 //   }
 // };
 
+// exports.bookWorkshop = async (req, res) => {
+//   try {
+//     const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
+    
+//     // Validate required fields
+//     if (!workshopId || !name || !age || !email || !mobile_number || !gender || price == null) {
+//       return res.status(400).json({ error: 'Missing required fields' });
+//     }
+
+//     if (!isValidObjectId(workshopId)) {
+//       return res.status(400).json({ error: 'Invalid workshopId' });
+//     }
+//     if (!Array.isArray(batchIds) || batchIds.length === 0) {
+//       return res.status(400).json({ error: 'batchIds array is required' });
+//     }
+//     for (const bId of batchIds) {
+//       if (!isValidObjectId(bId)) {
+//         return res.status(400).json({ error: 'Invalid batchId in batchIds' });
+//       }
+//     }
+//     if (typeof age !== 'number' || age < 0) {
+//       return res.status(400).json({ error: 'Invalid age' });
+//     }
+//     if (!['Male', 'Female', 'Other'].includes(gender)) {
+//       return res.status(400).json({ error: 'Invalid gender' });
+//     }
+//     if (typeof price !== 'number' || price <= 0) {
+//       return res.status(400).json({ error: 'Invalid price' });
+//     }
+
+//     const workshop = await Workshop.findOne({
+//       _id: workshopId,
+//       is_cancelled: false,
+//       is_active: true
+//     });
+
+//     if (!workshop) {
+//       return res.status(404).json({ error: 'Workshop not found or unavailable.' });
+//     }
+
+//     for (const bId of batchIds) {
+//       const batch = workshop.batches.id(bId);
+//       if (!batch || batch.is_cancelled) {
+//         return res.status(404).json({ error: 'Selected batch not found or cancelled.' });
+//       }
+//       if (typeof batch.capacity === 'number' && batch.capacity <= 0) {
+//         return res.status(400).json({ error: 'No more slots available for one of the batches.' });
+//       }
+//     }
+
+//     // Use valid enum value for pricing_tier: 'REGULAR'
+//     const pricingDetails = batchIds.map(bId => ({
+//       batch_id: bId,
+//       pricing_tier: 'REGULAR',
+//       price: price / batchIds.length
+//     }));
+//     const processingFee = 50;
+
+//     let totalPrice = price + processingFee
+//     const booking = new Booking({
+//       workshop: workshopId,
+//       batch_ids: batchIds,
+//       name,
+//       age,
+//       email,
+//       mobile_number,
+//       gender,
+//       status: 'INITIATED',
+//       pricing_details: pricingDetails,
+//       price_charged: totalPrice,
+//       paymentResult: { status: 'initiated' }
+//     });
+
+//     await booking.save();
+
+//     const merchantOrderId = booking._id.toString();
+//     const redirectUrl = `http://localhost:5173/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+//     // const redirectUrl = `https://www.thedancedistrict.in/api/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+//     const priceInPaise = Math.round(totalPrice * 100);
+
+//     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
+//       .merchantOrderId(merchantOrderId)
+//       .amount(priceInPaise)
+//       .redirectUrl(redirectUrl)
+//       .build();
+
+//     const paymentResponse = await client.pay(paymentRequest);
+
+//     return res.status(201).json({ checkoutPageUrl: paymentResponse.redirectUrl, bookingId: booking._id });
+
+//   } catch (error) {
+//     console.error('Error in booking workshop:', error);
+//     return res.status(500).json({ error: `Server error: ${error.message}` });
+//   }
+// };
+// exports.getStatusOfPayment = async (req, res) => {
+//   try {
+//     const { merchantOrderId } = req.query;
+//     if (!merchantOrderId) {
+//       return res.status(400).json({ error: "merchantOrderId is required" });
+//     }
+//     const booking = await Booking.findById(merchantOrderId).populate('workshop').lean();
+//     if (!booking) {
+//       return res.status(404).json({ error: "Booking not found" });
+//     }
+//     return res.status(200).json({
+//       bookingId: booking._id,
+//       status: booking.status,
+//       paymentResult: booking.paymentResult
+//     });
+//   } catch (error) {
+//     console.error('Error while checking payment status:', error);
+//     return res.status(500).json({ error: 'Internal server error during payment status check' });
+//   }
+// };
+
+
 exports.bookWorkshop = async (req, res) => {
   try {
     const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
@@ -632,8 +749,7 @@ exports.bookWorkshop = async (req, res) => {
     await booking.save();
 
     const merchantOrderId = booking._id.toString();
-    const redirectUrl = `http://localhost:5173/workshop/check-status?merchantOrderId=${merchantOrderId}`;
-    // const redirectUrl = `https://www.thedancedistrict.in/api/workshop/check-status?merchantOrderId=${merchantOrderId}`;
+    const redirectUrl = `https://www.thedancedistrict.in/api/workshop/check-status?merchantOrderId=${merchantOrderId}`;
     const priceInPaise = Math.round(totalPrice * 100);
 
     const paymentRequest = StandardCheckoutPayRequest.builder(merchantOrderId)
@@ -651,26 +767,198 @@ exports.bookWorkshop = async (req, res) => {
     return res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
+
 exports.getStatusOfPayment = async (req, res) => {
+  console.log('getStatusOfPayment invoked with query:', req.query);
+
   try {
     const { merchantOrderId } = req.query;
+
     if (!merchantOrderId) {
-      return res.status(400).json({ error: "merchantOrderId is required" });
+      return res.status(400).send("merchantOrderId is required");
     }
-    const booking = await Booking.findById(merchantOrderId).populate('workshop').lean();
-    if (!booking) {
-      return res.status(404).json({ error: "Booking not found" });
+
+    // Call PhonePe API for order status
+    const response = await client.getOrderStatus(merchantOrderId);
+    const status = response.state;
+
+    if (status === 'COMPLETED') {
+      const booking = await Booking.findById(merchantOrderId).populate('workshop').lean();
+      if (!booking) {
+        return res.status(404).send("Booking not found");
+      }
+
+      let capacityOk = true;
+      const workshopDoc = await Workshop.findById(booking.workshop._id).lean();
+
+      if (!workshopDoc || workshopDoc.is_cancelled || !workshopDoc.is_active) {
+        capacityOk = false;
+      } else {
+        for (const bId of booking.batch_ids || []) {
+          const bIdObj = new mongoose.Types.ObjectId(bId);
+          const batch = workshopDoc.batches?.find(b => b._id.toString() === bIdObj.toString());
+
+          if (!batch || batch.is_cancelled) {
+            capacityOk = false;
+            break;
+          }
+
+          if (typeof batch.capacity === 'number') {
+            const updated = await Workshop.findOneAndUpdate(
+              { _id: booking.workshop._id },
+              {
+                $inc: {
+                  'batches.$[batchCapacity].capacity': -1,
+                  'batches.$[batchEarlyBird].pricing.early_bird.capacity_limit': -1
+                }
+              },
+              {
+                arrayFilters: [
+                  { 'batchCapacity._id': bIdObj, 'batchCapacity.capacity': { $gt: 0 } },
+                  { 'batchEarlyBird._id': bIdObj, 'batchEarlyBird.pricing.early_bird.capacity_limit': { $gt: 0 } }
+                ]
+              }
+            );
+            if (!updated) {
+              capacityOk = false;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!capacityOk) {
+        await Booking.findByIdAndUpdate(merchantOrderId, {
+          'paymentResult.status': 'FAILED',
+          'paymentResult.phonepeResponse': response,
+          status: 'FAILED'
+        });
+        return res.redirect('https://www.thedancedistrict.in/payment-failure');
+        // return res.redirect(`http://localhost:5173/payment-failure`);
+      }
+
+      // Update booking on successful payment
+      const updatedBooking = await Booking.findByIdAndUpdate(
+        merchantOrderId,
+        {
+          'paymentResult.status': 'COMPLETED',
+          'paymentResult.paymentDate': new Date(),
+          'paymentResult.phonepeResponse': response,
+          status: 'CONFIRMED'
+        },
+        { new: true }
+      ).populate('workshop');
+
+      console.log('Booking confirmed:', updatedBooking);
+
+      // WhatsApp message preparation
+      let mobileNumber = updatedBooking?.mobile_number?.toString().trim() || '';
+      if (mobileNumber) {
+        const digits = mobileNumber.replace(/\D/g, '');
+        if (digits.length === 10) mobileNumber = `+91${digits}`;
+        else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
+        else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
+      }
+
+      const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1';
+      const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '15558600955';
+      console.log('updatedBooking',updatedBooking)
+      const dancerName = updatedBooking.name || 'Participant';
+      const workshopTitle = updatedBooking.workshop?.title || 'Dance Workshop';
+      const date = updatedBooking.workshop?.date ? new Date(updatedBooking.workshop.date).toLocaleDateString('en-GB') : 'TBA';
+      const batch = updatedBooking.workshop?.batches?.find(b => updatedBooking.batch_ids.includes(b._id.toString()));
+console.log('batch time', batch);
+
+const time = batch?.start_time 
+  ? new Date(batch.start_time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) 
+  : 'TBA';
+      const location = updatedBooking.workshop?.location || 'The Dance District Studio, Gubalaala Main Road Bengaluru';
+      const contactNo = '+91 8073139244';
+
+      const messagePayload = {
+        integrated_number: '15558600955',
+        content_type: "template",
+        payload: {
+          messaging_product: "whatsapp",
+          type: "template",
+          template: {
+            name: "workshop_confirmation",
+            language: {
+              code: "en",
+              policy: "deterministic"
+            },
+            namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
+            to_and_components: [
+              {
+                to: [mobileNumber],
+                components: {
+                  body_1: { type: "text", value: dancerName },
+                  body_2: { type: "text", value: workshopTitle },
+                  body_3: { type: "text", value: date },
+                  body_4: { type: "text", value: time },
+                  body_5: { type: "text", value: location },
+                  body_6: { type: "text", value: contactNo }
+                }
+              }
+            ]
+          }
+        }
+      };
+
+      const apiURL = 'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/';
+
+      if (mobileNumber) {
+        try {
+          const axiosResponse = await axios.post(apiURL, messagePayload, {
+            headers: {
+              'authkey': '473576AtOfLQYl68f619aaP1',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            maxRedirects: 5
+          });
+          console.log('WhatsApp API bulk message response:', axiosResponse.data);
+        } catch (error) {
+          console.error('Failed to send WhatsApp bulk message:', error.response?.data || error.message);
+        }
+      } else {
+        console.log('No valid mobile number available for WhatsApp message');
+      }
+
+      // Send confirmation email for workshop booking
+      try {
+        const { sendWorkshopBookingConfirmationEmail } = require('../../utils/sendEmail');
+        await sendWorkshopBookingConfirmationEmail(
+          updatedBooking.email,
+          dancerName,
+          workshopTitle,
+          date,
+          time,
+          location
+        );
+        console.log('Workshop booking confirmation email sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send workshop booking email:', emailError);
+      }
+
+      return res.redirect(`https://www.thedancedistrict.in/payment-success`);
+      // return res.redirect(`http://localhost:5173/payment-success`);
+
+    } else {
+      await Booking.findByIdAndUpdate(merchantOrderId, {
+        'paymentResult.status': 'FAILED',
+        'paymentResult.phonepeResponse': response,
+        status: 'FAILED'
+      });
+      return res.redirect(`https://www.thedancedistrict.in/payment-failure`);
+      // return res.redirect(`http://localhost:5173/payment-failure`);
+
     }
-    return res.status(200).json({
-      bookingId: booking._id,
-      status: booking.status,
-      paymentResult: booking.paymentResult
-    });
   } catch (error) {
     console.error('Error while checking payment status:', error);
-    return res.status(500).json({ error: 'Internal server error during payment status check' });
+    return res.status(500).send('Internal server error during payment status check');
   }
-};
+}
 
 
 
@@ -916,139 +1204,139 @@ exports.createManualBooking = async (req, res) => {
   }
 };
 
-exports.phonepeWebhook = async (req, res) => {
-  try {
-    const event = req.body.event;
-    const paymentInfo = req.body.data || {};
-    const merchantOrderId = paymentInfo.merchantOrderId || paymentInfo.orderId;
+// exports.phonepeWebhook = async (req, res) => {
+//   try {
+//     const event = req.body.event;
+//     const paymentInfo = req.body.data || {};
+//     const merchantOrderId = paymentInfo.merchantOrderId || paymentInfo.orderId;
 
-    if (!merchantOrderId) {
-      return res.status(400).json({ error: 'Missing merchantOrderId/orderId in webhook payload' });
-    }
+//     if (!merchantOrderId) {
+//       return res.status(400).json({ error: 'Missing merchantOrderId/orderId in webhook payload' });
+//     }
 
-    if (event === 'pg.order.completed') {
-      const booking = await Booking.findById(merchantOrderId).populate('workshop');
-      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+//     if (event === 'pg.order.completed') {
+//       const booking = await Booking.findById(merchantOrderId).populate('workshop');
+//       if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-      // Decrement batch capacity
-      const workshopDoc = await Workshop.findById(booking.workshop._id);
-      let capacityOk = true;
-      if (!workshopDoc || workshopDoc.is_cancelled || !workshopDoc.is_active) capacityOk = false;
-      else {
-        for (const bId of booking.batch_ids || []) {
-          const bIdObj = new mongoose.Types.ObjectId(bId);
-          const batch = workshopDoc.batches?.find(b => b._id.toString() === bIdObj.toString());
-          if (!batch || batch.is_cancelled) { capacityOk = false; break; }
-          if (typeof batch.capacity === 'number') {
-            const updated = await Workshop.findOneAndUpdate(
-              { _id: workshopDoc._id },
-              { $inc: { 'batches.$[batchCapacity].capacity': -1, 'batches.$[batchEarlyBird].pricing.early_bird.capacity_limit': -1 } },
-              { arrayFilters: [
-                { 'batchCapacity._id': bIdObj, 'batchCapacity.capacity': { $gt: 0 } },
-                { 'batchEarlyBird._id': bIdObj, 'batchEarlyBird.pricing.early_bird.capacity_limit': { $gt: 0 } }
-              ] }
-            );
-            if (!updated) { capacityOk = false; break; }
-          }
-        }
-      }
+//       // Decrement batch capacity
+//       const workshopDoc = await Workshop.findById(booking.workshop._id);
+//       let capacityOk = true;
+//       if (!workshopDoc || workshopDoc.is_cancelled || !workshopDoc.is_active) capacityOk = false;
+//       else {
+//         for (const bId of booking.batch_ids || []) {
+//           const bIdObj = new mongoose.Types.ObjectId(bId);
+//           const batch = workshopDoc.batches?.find(b => b._id.toString() === bIdObj.toString());
+//           if (!batch || batch.is_cancelled) { capacityOk = false; break; }
+//           if (typeof batch.capacity === 'number') {
+//             const updated = await Workshop.findOneAndUpdate(
+//               { _id: workshopDoc._id },
+//               { $inc: { 'batches.$[batchCapacity].capacity': -1, 'batches.$[batchEarlyBird].pricing.early_bird.capacity_limit': -1 } },
+//               { arrayFilters: [
+//                 { 'batchCapacity._id': bIdObj, 'batchCapacity.capacity': { $gt: 0 } },
+//                 { 'batchEarlyBird._id': bIdObj, 'batchEarlyBird.pricing.early_bird.capacity_limit': { $gt: 0 } }
+//               ] }
+//             );
+//             if (!updated) { capacityOk = false; break; }
+//           }
+//         }
+//       }
 
-      if (!capacityOk) {
-        await Booking.findByIdAndUpdate(merchantOrderId, {
-          'paymentResult.status': 'FAILED',
-          'paymentResult.phonepeResponse': paymentInfo,
-          status: 'FAILED'
-        });
-        return res.status(200).json({ success: false, error: 'Batch/workshop unavailable or capacity full' });
-      }
+//       if (!capacityOk) {
+//         await Booking.findByIdAndUpdate(merchantOrderId, {
+//           'paymentResult.status': 'FAILED',
+//           'paymentResult.phonepeResponse': paymentInfo,
+//           status: 'FAILED'
+//         });
+//         return res.status(200).json({ success: false, error: 'Batch/workshop unavailable or capacity full' });
+//       }
 
-      // Confirm booking
-      const updatedBooking = await Booking.findByIdAndUpdate(
-        merchantOrderId,
-        { 'paymentResult.status': 'COMPLETED', 'paymentResult.paymentDate': new Date(), 'paymentResult.phonepeResponse': paymentInfo, status: 'CONFIRMED' },
-        { new: true }
-      ).populate('workshop');
+//       // Confirm booking
+//       const updatedBooking = await Booking.findByIdAndUpdate(
+//         merchantOrderId,
+//         { 'paymentResult.status': 'COMPLETED', 'paymentResult.paymentDate': new Date(), 'paymentResult.phonepeResponse': paymentInfo, status: 'CONFIRMED' },
+//         { new: true }
+//       ).populate('workshop');
 
-      // WhatsApp message
-      let mobileNumber = updatedBooking?.mobile_number?.toString().trim() || '';
-      if (mobileNumber) {
-        const digits = mobileNumber.replace(/\D/g, '');
-        if (digits.length === 10) mobileNumber = `+91${digits}`;
-        else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
-        else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
-      }
-      const dancerName = updatedBooking.name || 'Participant';
-      const workshopTitle = updatedBooking.workshop?.title || 'Dance Workshop';
-      const date = updatedBooking.workshop?.date ? new Date(updatedBooking.workshop.date).toLocaleDateString('en-GB') : 'TBA';
-      const batch = updatedBooking.workshop?.batches?.find(b => updatedBooking.batch_ids.includes(b._id.toString()));
-      const time = batch?.start_time 
-        ? new Date(batch.start_time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) 
-        : 'TBA';
-      const location = updatedBooking.workshop?.location || 'The Dance District Studio, Gubalaala Main Road Bengaluru';
-      const contactNo = '+91 8073139244';
+//       // WhatsApp message
+//       let mobileNumber = updatedBooking?.mobile_number?.toString().trim() || '';
+//       if (mobileNumber) {
+//         const digits = mobileNumber.replace(/\D/g, '');
+//         if (digits.length === 10) mobileNumber = `+91${digits}`;
+//         else if (digits.startsWith('91') && digits.length === 12) mobileNumber = `+${digits}`;
+//         else if (!mobileNumber.startsWith('+')) mobileNumber = `+${digits}`;
+//       }
+//       const dancerName = updatedBooking.name || 'Participant';
+//       const workshopTitle = updatedBooking.workshop?.title || 'Dance Workshop';
+//       const date = updatedBooking.workshop?.date ? new Date(updatedBooking.workshop.date).toLocaleDateString('en-GB') : 'TBA';
+//       const batch = updatedBooking.workshop?.batches?.find(b => updatedBooking.batch_ids.includes(b._id.toString()));
+//       const time = batch?.start_time 
+//         ? new Date(batch.start_time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) 
+//         : 'TBA';
+//       const location = updatedBooking.workshop?.location || 'The Dance District Studio, Gubalaala Main Road Bengaluru';
+//       const contactNo = '+91 8073139244';
 
-      const messagePayload = {
-        integrated_number: '15558600955',
-        content_type: "template",
-        payload: {
-          messaging_product: "whatsapp",
-          type: "template",
-          template: {
-            name: "workshop_confirmation",
-            language: { code: "en", policy: "deterministic" },
-            namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
-            to_and_components: [
-              {
-                to: [mobileNumber],
-                components: {
-                  body_1: { type: "text", value: dancerName },
-                  body_2: { type: "text", value: workshopTitle },
-                  body_3: { type: "text", value: date },
-                  body_4: { type: "text", value: time },
-                  body_5: { type: "text", value: location },
-                  body_6: { type: "text", value: contactNo }
-                }
-              }
-            ]
-          }
-        }
-      };
-      const apiURL = 'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/';
-      if (mobileNumber) {
-        try {
-          await axios.post(apiURL, messagePayload, {
-            headers: {
-              'authkey': process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            maxRedirects: 5
-          });
-        } catch (error) {
-          console.error('Failed to send WhatsApp bulk message:', error.response?.data || error.message);
-        }
-      }
+//       const messagePayload = {
+//         integrated_number: '15558600955',
+//         content_type: "template",
+//         payload: {
+//           messaging_product: "whatsapp",
+//           type: "template",
+//           template: {
+//             name: "workshop_confirmation",
+//             language: { code: "en", policy: "deterministic" },
+//             namespace: "757345ed_855e_4856_b51f_06bc7bcfb953",
+//             to_and_components: [
+//               {
+//                 to: [mobileNumber],
+//                 components: {
+//                   body_1: { type: "text", value: dancerName },
+//                   body_2: { type: "text", value: workshopTitle },
+//                   body_3: { type: "text", value: date },
+//                   body_4: { type: "text", value: time },
+//                   body_5: { type: "text", value: location },
+//                   body_6: { type: "text", value: contactNo }
+//                 }
+//               }
+//             ]
+//           }
+//         }
+//       };
+//       const apiURL = 'https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/';
+//       if (mobileNumber) {
+//         try {
+//           await axios.post(apiURL, messagePayload, {
+//             headers: {
+//               'authkey': process.env.MSG91_AUTHKEY || '473576AtOfLQYl68f619aaP1',
+//               'Content-Type': 'application/json',
+//               'Accept': 'application/json'
+//             },
+//             maxRedirects: 5
+//           });
+//         } catch (error) {
+//           console.error('Failed to send WhatsApp bulk message:', error.response?.data || error.message);
+//         }
+//       }
               
-      // Email confirmation
-      try {
-        await sendWorkshopBookingConfirmationEmail(
-          updatedBooking.email, dancerName, workshopTitle, date, time, location
-        );
-      } catch (emailError) {
-        console.error('Failed to send workshop booking email:', emailError);
-      }
-      return res.status(200).json({ success: true, updatedBooking });
+//       // Email confirmation
+//       try {
+//         await sendWorkshopBookingConfirmationEmail(
+//           updatedBooking.email, dancerName, workshopTitle, date, time, location
+//         );
+//       } catch (emailError) {
+//         console.error('Failed to send workshop booking email:', emailError);
+//       }
+//       return res.status(200).json({ success: true, updatedBooking });
 
-    } else if (event === 'pg.order.failed') {
-      const updatedBooking = await Booking.findByIdAndUpdate(
-        merchantOrderId, { status: 'FAILED', 'paymentResult.status': 'FAILED', 'paymentResult.phonepeResponse': paymentInfo }, { new: true }
-      );
-      return res.status(200).json({ success: false, updatedBooking });
-    } else {
-      return res.status(400).json({ error: 'Unhandled PhonePe event type' });
-    }
-  } catch (error) {
-    console.error('Error in PhonePe webhook handler:', error);
-    res.status(500).json({ error: error.message });
-  }
-}
+//     } else if (event === 'pg.order.failed') {
+//       const updatedBooking = await Booking.findByIdAndUpdate(
+//         merchantOrderId, { status: 'FAILED', 'paymentResult.status': 'FAILED', 'paymentResult.phonepeResponse': paymentInfo }, { new: true }
+//       );
+//       return res.status(200).json({ success: false, updatedBooking });
+//     } else {
+//       return res.status(400).json({ error: 'Unhandled PhonePe event type' });
+//     }
+//   } catch (error) {
+//     console.error('Error in PhonePe webhook handler:', error);
+//     res.status(500).json({ error: error.message });
+//   }
+// }
