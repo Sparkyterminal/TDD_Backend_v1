@@ -510,6 +510,7 @@ router.get('/:planId/:batchId/bookings', membershipBookingController.getConfirme
 router.get('/bookingsByBatch', membershipBookingController.getAdminBookingSummary);
 router.post('/:membershipBookingId/renew', plansController.renewMembership);
 router.get('/user/:userId', plansController.getUserMemberships);
+router.delete('/user/:id', validateId, plansController.deleteUserAndMemberships);
 router.get('/:id', validateId, plansController.getPlanById);
 router.put('/:id', validateId, validateUpdateMembershipPlan, plansController.updatePlan);
 router.delete('/:id', validateId, plansController.deletePlan);
