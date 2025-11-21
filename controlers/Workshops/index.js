@@ -1091,21 +1091,17 @@ exports.createManualBooking = async (req, res) => {
       let tier = 'REGULAR';
       if (earlyLimit > 0 && earlyCount < earlyLimit && batch.pricing?.early_bird?.price != null) {
         tier = 'EARLY_BIRD';
-      } else if (batch.pricing?.regular?.price != null) {
-        tier = 'REGULAR';
-        price = batch.pricing.regular.price;
-      } else if (batch.pricing?.on_the_spot?.price != null) {
+      } else if (batch.pricing?.on_the_spot?.price != null && batch.pricing?.regular?.price == null) {
         tier = 'ON_THE_SPOT';
-        price = batch.pricing.on_the_spot.price;
       }
 
       let price = 0;
       if (tier === 'EARLY_BIRD') {
-        price = batch.pricing.early_bird.price;
+        price = batch.pricing?.early_bird?.price ?? 0;
       } else if (tier === 'REGULAR') {
-        price = batch.pricing.regular.price;
+        price = batch.pricing?.regular?.price ?? 0;
       } else if (tier === 'ON_THE_SPOT') {
-        price = batch.pricing.on_the_spot.price;
+        price = batch.pricing?.on_the_spot?.price ?? 0;
       }
 
       pricingDetails.push({ 
