@@ -2092,36 +2092,61 @@ exports.deleteUserAndMemberships = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!isValidObjectId(id)) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Invalid user ID' 
-      });
-    }
-
-    // Check if user exists
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'User not found' 
-      });
-    }
-
-    // Delete all membership bookings for this user
-    const deleteBookingsResult = await MembershipBooking.deleteMany({ user: id });
+    // Check if id is a valid ObjectId
+    const isValidId = isValidObjectId(id);
     
-    // Delete the user
-    await User.findByIdAndDelete(id);
+    let user = null;
+    let deleteBookingsResult = null;
+    let deletedUser = false;
 
-    res.status(200).json({
-      success: true,
-      message: 'User and all associated membership bookings deleted successfully',
-      data: {
-        deletedUserId: id,
-        deletedMembershipBookings: deleteBookingsResult.deletedCount
+    // If id is a valid ObjectId, try to find the user
+    if (isValidId) {
+      user = await User.findById(id);
+    }
+
+    if (user) {
+      // User exists: delete all membership bookings for this user
+      deleteBookingsResult = await MembershipBooking.deleteMany({ user: id });
+      
+      // Delete the user
+      await User.findByIdAndDelete(id);
+      deletedUser = true;
+
+      res.status(200).json({
+        success: true,
+        message: 'User and all associated membership bookings deleted successfully',
+        data: {
+          deletedUserId: id,
+          deletedMembershipBookings: deleteBookingsResult.deletedCount,
+          userDeleted: true
+        }
+      });
+    } else {
+      // User doesn't exist: delete only membership bookings
+      // If id is valid, delete bookings with that user ID
+      // If id is invalid/null, delete bookings without users
+      if (isValidId) {
+        deleteBookingsResult = await MembershipBooking.deleteMany({ user: id });
+      } else {
+        // Delete bookings where user is null or doesn't exist
+        deleteBookingsResult = await MembershipBooking.deleteMany({ 
+          $or: [
+            { user: null },
+            { user: { $exists: false } }
+          ]
+        });
       }
-    });
+
+      res.status(200).json({
+        success: true,
+        message: 'Membership bookings deleted successfully (user did not exist)',
+        data: {
+          deletedUserId: isValidId ? id : null,
+          deletedMembershipBookings: deleteBookingsResult.deletedCount,
+          userDeleted: false
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Error deleting user and memberships:', error);
