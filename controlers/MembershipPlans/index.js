@@ -1197,7 +1197,7 @@ exports.renewMembership = async (req, res) => {
 
 exports.getAllMembershipBookings = async (req, res) => {
   try {
-    const { page , limit , status, planId, userId, batchId, search } = req.query;
+    const { page , limit , status, planId, userId, batchId, search, discontinued, renewalEligible } = req.query;
     const skip = (page - 1) * limit;
 
     // Build match filter for aggregation
@@ -1217,6 +1217,13 @@ exports.getAllMembershipBookings = async (req, res) => {
     
     if (batchId && isValidObjectId(batchId)) {
       matchFilter.batchId = new mongoose.Types.ObjectId(batchId);
+    }
+
+    // Note: discontinued filter will be applied after initial match to avoid conflicts
+    let discontinuedFilter = null;
+    if (discontinued !== undefined && discontinued !== null && discontinued !== '') {
+      const isDiscontinued = discontinued === 'true' || discontinued === true || discontinued === 'yes';
+      discontinuedFilter = isDiscontinued;
     }
 
     // Aggregation pipeline
@@ -1297,6 +1304,89 @@ exports.getAllMembershipBookings = async (req, res) => {
       }
     ];
 
+    // Apply discontinued filter after data reshaping
+    if (discontinuedFilter !== null) {
+      if (discontinuedFilter === true) {
+        // Filter for discontinued bookings
+        pipeline.push({
+          $match: {
+            $or: [
+              { discontinued: true },
+              { discontinued: 'true' }
+            ]
+          }
+        });
+      } else {
+        // Filter for active (non-discontinued) bookings
+        pipeline.push({
+          $match: {
+            $or: [
+              { discontinued: { $exists: false } },
+              { discontinued: false },
+              { discontinued: 'false' },
+              { discontinued: null }
+            ]
+          }
+        });
+      }
+    }
+
+    // Add calculated field for renewal eligibility
+    // Renewal eligible if end_date exists and is within 2 days from today (including today and up to 2 days ahead)
+    pipeline.push({
+      $addFields: {
+        renewalEligible: {
+          $cond: {
+            if: {
+              $and: [
+                { $ne: ['$end_date', null] },
+                { $ne: ['$end_date', undefined] },
+                { $eq: [{ $type: '$end_date' }, 'date'] }
+              ]
+            },
+            then: {
+              $let: {
+                vars: {
+                  now: '$$NOW',
+                  twoDaysFromNow: {
+                    $dateAdd: {
+                      startDate: '$$NOW',
+                      unit: 'day',
+                      amount: 2
+                    }
+                  },
+                  todayStart: {
+                    $dateFromParts: {
+                      year: { $year: '$$NOW' },
+                      month: { $month: '$$NOW' },
+                      day: { $dayOfMonth: '$$NOW' }
+                    }
+                  }
+                },
+                in: {
+                  $and: [
+                    { $lte: ['$end_date', '$$twoDaysFromNow'] },
+                    { $gte: ['$end_date', '$$todayStart'] }
+                  ]
+                }
+              }
+            },
+            else: false
+          }
+        }
+      }
+    });
+
+    // Filter by renewal eligibility BEFORE search
+    if (renewalEligible !== undefined && renewalEligible !== null && renewalEligible !== '') {
+      const isRenewalEligible = renewalEligible === 'true' || renewalEligible === true || renewalEligible === 'yes';
+      pipeline.push({
+        $match: {
+          renewalEligible: isRenewalEligible
+        }
+      });
+    }
+
     // Add search functionality AFTER lookups
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
@@ -1360,7 +1450,9 @@ exports.getAllMembershipBookings = async (req, res) => {
           planId: planId || null,
           userId: userId || null,
           batchId: batchId || null,
-          search: search || null
+          search: search || null,
+          discontinued: discontinued || null,
+          renewalEligible: renewalEligible || null
         }
       }
     });
