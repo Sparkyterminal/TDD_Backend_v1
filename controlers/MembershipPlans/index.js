@@ -1471,7 +1471,7 @@ exports.getAllMembershipBookings = async (req, res) => {
                         {
                           $and: [
                             { $eq: ['$$paymentStatus', 'COMPLETED'] },
-                            { $lte: ['$$diffDays', 2] }
+                            { $lte: ['$$diffDays', 1] }
                           ]
                         }
                       ]
