@@ -1424,36 +1424,34 @@ exports.getAllMembershipBookings = async (req, res) => {
               ]
             },
             then: {
-              $let: {
-                vars: {
-                  now: '$$NOW',
-                  todayStart: {
-                    $dateFromParts: {
-                      year: { $year: '$$NOW' },
-                      month: { $month: '$$NOW' },
-                      day: { $dayOfMonth: '$$NOW' }
-                    }
-                  },
-                  endDateStart: {
-                    $dateFromParts: {
-                      year: { $year: '$effectiveEndDate' },
-                      month: { $month: '$effectiveEndDate' },
-                      day: { $dayOfMonth: '$effectiveEndDate' }
-                    }
-                  },
-                  diffMs: {
-                    $subtract: ['$$endDateStart', '$$todayStart']
-                  },
-                  diffDays: {
-                    $ceil: {
-                      $divide: ['$$diffMs', 24 * 60 * 60 * 1000]
-                    }
+              $lte: [
+                {
+                  $ceil: {
+                    $divide: [
+                      {
+                        $subtract: [
+                          {
+                            $dateFromParts: {
+                              year: { $year: '$effectiveEndDate' },
+                              month: { $month: '$effectiveEndDate' },
+                              day: { $dayOfMonth: '$effectiveEndDate' }
+                            }
+                          },
+                          {
+                            $dateFromParts: {
+                              year: { $year: '$$NOW' },
+                              month: { $month: '$$NOW' },
+                              day: { $dayOfMonth: '$$NOW' }
+                            }
+                          }
+                        ]
+                      },
+                      24 * 60 * 60 * 1000
+                    ]
                   }
                 },
-                in: {
-                  $lte: ['$$diffDays', 2]
-                }
-              }
+                2
+              ]
             },
             else: false
           }
