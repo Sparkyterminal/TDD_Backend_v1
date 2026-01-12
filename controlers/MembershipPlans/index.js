@@ -1410,13 +1410,16 @@ exports.getAllMembershipBookings = async (req, res) => {
     });
 
     // Now calculate renewal eligibility based on effective end date
-    // Eligible if end date is within 2 days from today (only future dates: today, tomorrow, day after tomorrow)
-    // Frontend logic: diffDays = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24)); return diffDays <= 2
-    // But we want only future dates (>= today and <= 2 days from now)
+    // Frontend logic: Renew button is enabled when:
+    // 1. Payment status is NOT "COMPLETED" - always enabled
+    // 2. Payment status IS "COMPLETED" - enabled only if isRenewalEnabled returns true
+    //    isRenewalEnabled: diffDays = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24)); return diffDays <= 2
+    // 3. Must have an effective end date
     pipeline.push({
       $addFields: {
         renewalEligible: {
           $cond: {
+            // Must have effective end date
             if: {
               $and: [
                 { $ne: ['$effectiveEndDate', null] },
@@ -1424,43 +1427,56 @@ exports.getAllMembershipBookings = async (req, res) => {
               ]
             },
             then: {
-              $let: {
-                vars: {
-                  todayStart: {
-                    $dateFromParts: {
-                      year: { $year: '$$NOW' },
-                      month: { $month: '$$NOW' },
-                      day: { $dayOfMonth: '$$NOW' }
-                    }
-                  },
-                  twoDaysFromNow: {
-                    $dateAdd: {
-                      startDate: {
-                        $dateFromParts: {
-                          year: { $year: '$$NOW' },
-                          month: { $month: '$$NOW' },
-                          day: { $dayOfMonth: '$$NOW' }
-                        }
-                      },
-                      unit: 'day',
-                      amount: 2
-                    }
-                  },
-                  endDateStart: {
-                    $dateFromParts: {
-                      year: { $year: '$effectiveEndDate' },
-                      month: { $month: '$effectiveEndDate' },
-                      day: { $dayOfMonth: '$effectiveEndDate' }
-                    }
-                  }
+              $or: [
+                // If payment status is NOT "COMPLETED", always eligible
+                {
+                  $ne: [
+                    { $ifNull: ['$paymentResult.status', 'PENDING'] },
+                    'COMPLETED'
+                  ]
                 },
-                in: {
+                // If payment status IS "COMPLETED", check if end date is within 2 days
+                {
                   $and: [
-                    { $gte: ['$$endDateStart', '$$todayStart'] },
-                    { $lte: ['$$endDateStart', '$$twoDaysFromNow'] }
+                    {
+                      $eq: [
+                        { $ifNull: ['$paymentResult.status', 'PENDING'] },
+                        'COMPLETED'
+                      ]
+                    },
+                    {
+                      $lte: [
+                        {
+                          $ceil: {
+                            $divide: [
+                              {
+                                $subtract: [
+                                  {
+                                    $dateFromParts: {
+                                      year: { $year: '$effectiveEndDate' },
+                                      month: { $month: '$effectiveEndDate' },
+                                      day: { $dayOfMonth: '$effectiveEndDate' }
+                                    }
+                                  },
+                                  {
+                                    $dateFromParts: {
+                                      year: { $year: '$$NOW' },
+                                      month: { $month: '$$NOW' },
+                                      day: { $dayOfMonth: '$$NOW' }
+                                    }
+                                  }
+                                ]
+                              },
+                              24 * 60 * 60 * 1000
+                            ]
+                          }
+                        },
+                        2
+                      ]
+                    }
                   ]
                 }
-              }
+              ]
             },
             else: false
           }
