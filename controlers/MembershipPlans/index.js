@@ -1427,56 +1427,58 @@ exports.getAllMembershipBookings = async (req, res) => {
               ]
             },
             then: {
-              $or: [
-                // If payment status is NOT "COMPLETED", always eligible
-                {
-                  $ne: [
-                    { $ifNull: ['$paymentResult.status', 'PENDING'] },
-                    'COMPLETED'
-                  ]
+              $let: {
+                vars: {
+                  paymentStatus: { $ifNull: ['$paymentResult.status', 'PENDING'] },
+                  todayStart: {
+                    $dateFromParts: {
+                      year: { $year: '$$NOW' },
+                      month: { $month: '$$NOW' },
+                      day: { $dayOfMonth: '$$NOW' },
+                      hour: 0,
+                      minute: 0,
+                      second: 0
+                    }
+                  },
+                  endDateStart: {
+                    $dateFromParts: {
+                      year: { $year: '$effectiveEndDate' },
+                      month: { $month: '$effectiveEndDate' },
+                      day: { $dayOfMonth: '$effectiveEndDate' },
+                      hour: 0,
+                      minute: 0,
+                      second: 0
+                    }
+                  }
                 },
-                // If payment status IS "COMPLETED", check if end date is within 2 days
-                {
-                  $and: [
-                    {
-                      $eq: [
-                        { $ifNull: ['$paymentResult.status', 'PENDING'] },
-                        'COMPLETED'
-                      ]
+                in: {
+                  $let: {
+                    vars: {
+                      diffDays: {
+                        $ceil: {
+                          $divide: [
+                            { $subtract: ['$$endDateStart', '$$todayStart'] },
+                            24 * 60 * 60 * 1000
+                          ]
+                        }
+                      }
                     },
-                    {
-                      $lte: [
+                    in: {
+                      $or: [
+                        // If payment status is NOT "COMPLETED", always eligible
+                        { $ne: ['$$paymentStatus', 'COMPLETED'] },
+                        // If payment status IS "COMPLETED", only eligible if diffDays <= 2
                         {
-                          $ceil: {
-                            $divide: [
-                              {
-                                $subtract: [
-                                  {
-                                    $dateFromParts: {
-                                      year: { $year: '$effectiveEndDate' },
-                                      month: { $month: '$effectiveEndDate' },
-                                      day: { $dayOfMonth: '$effectiveEndDate' }
-                                    }
-                                  },
-                                  {
-                                    $dateFromParts: {
-                                      year: { $year: '$$NOW' },
-                                      month: { $month: '$$NOW' },
-                                      day: { $dayOfMonth: '$$NOW' }
-                                    }
-                                  }
-                                ]
-                              },
-                              24 * 60 * 60 * 1000
-                            ]
-                          }
-                        },
-                        2
+                          $and: [
+                            { $eq: ['$$paymentStatus', 'COMPLETED'] },
+                            { $lte: ['$$diffDays', 2] }
+                          ]
+                        }
                       ]
                     }
-                  ]
+                  }
                 }
-              ]
+              }
             },
             else: false
           }
