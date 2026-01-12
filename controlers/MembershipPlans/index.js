@@ -1423,14 +1423,14 @@ exports.getAllMembershipBookings = async (req, res) => {
             // Must NOT be discontinued AND must have effective end date
             if: {
               $and: [
-                // Not discontinued (check for true or 'true')
+                // Not discontinued
                 {
-                  $not: {
-                    $or: [
-                      { $eq: ['$discontinued', true] },
-                      { $eq: ['$discontinued', 'true'] }
-                    ]
-                  }
+                  $or: [
+                    { $eq: ['$discontinued', false] },
+                    { $eq: ['$discontinued', 'false'] },
+                    { $eq: ['$discontinued', null] },
+                    { $eq: [{ $type: '$discontinued' }, 'missing'] }
+                  ]
                 },
                 // Must have effective end date
                 { $ne: ['$effectiveEndDate', null] },
