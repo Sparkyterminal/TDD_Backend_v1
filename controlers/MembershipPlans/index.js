@@ -1332,10 +1332,12 @@ exports.getAllMembershipBookings = async (req, res) => {
     }
 
     // Add calculated field for renewal eligibility
-    // Renewal eligible if end_date exists and is within 2 days from today (including today and up to 2 days ahead)
+    // First, calculate effective end_date (use end_date if exists, otherwise calculate from renewal_date/start_date + billing_interval)
+    // Then check if it's within 2 days from today (including past dates up to 2 days ago, today, and up to 2 days ahead)
     pipeline.push({
       $addFields: {
-        renewalEligible: {
+        // Calculate effective end date
+        effectiveEndDate: {
           $cond: {
             if: {
               $and: [
@@ -1344,30 +1346,112 @@ exports.getAllMembershipBookings = async (req, res) => {
                 { $eq: [{ $type: '$end_date' }, 'date'] }
               ]
             },
+            then: '$end_date',
+            else: {
+              // Calculate from renewal_date or start_date + billing_interval
+              $cond: {
+                if: {
+                  $and: [
+                    { $or: [
+                      { $and: [{ $ne: ['$renewal_date', null] }, { $ne: ['$renewal_date', undefined] }] },
+                      { $and: [{ $ne: ['$start_date', null] }, { $ne: ['$start_date', undefined] }] }
+                    ]},
+                    { $ne: ['$billing_interval', null] },
+                    { $ne: ['$billing_interval', undefined] }
+                  ]
+                },
+                then: {
+                  $let: {
+                    vars: {
+                      baseDate: {
+                        $cond: {
+                          if: { $and: [{ $ne: ['$renewal_date', null] }, { $ne: ['$renewal_date', undefined] }] },
+                          then: '$renewal_date',
+                          else: '$start_date'
+                        }
+                      },
+                      interval: '$billing_interval'
+                    },
+                    in: {
+                      $dateAdd: {
+                        startDate: '$$baseDate',
+                        unit: {
+                          $switch: {
+                            branches: [
+                              { case: { $in: ['$$interval', ['monthly', 'MONTHLY']] }, then: 'month' },
+                              { case: { $in: ['$$interval', ['quarterly', 'QUARTERLY', '3_MONTHS']] }, then: 'month' },
+                              { case: { $in: ['$$interval', ['half_yearly', 'HALF_YEARLY', '6_MONTHS']] }, then: 'month' },
+                              { case: { $in: ['$$interval', ['yearly', 'YEARLY']] }, then: 'year' }
+                            ],
+                            default: 'month'
+                          }
+                        },
+                        amount: {
+                          $switch: {
+                            branches: [
+                              { case: { $in: ['$$interval', ['monthly', 'MONTHLY']] }, then: 1 },
+                              { case: { $in: ['$$interval', ['quarterly', 'QUARTERLY', '3_MONTHS']] }, then: 3 },
+                              { case: { $in: ['$$interval', ['half_yearly', 'HALF_YEARLY', '6_MONTHS']] }, then: 6 },
+                              { case: { $in: ['$$interval', ['yearly', 'YEARLY']] }, then: 12 }
+                            ],
+                            default: 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                else: null
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Now calculate renewal eligibility based on effective end date
+    // Eligible if end date is within 2 days from today (past or future)
+    // Frontend logic: diffDays = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24)); return diffDays <= 2
+    // Calculate difference in days and check if <= 2
+    pipeline.push({
+      $addFields: {
+        renewalEligible: {
+          $cond: {
+            if: {
+              $and: [
+                { $ne: ['$effectiveEndDate', null] },
+                { $ne: ['$effectiveEndDate', undefined] }
+              ]
+            },
             then: {
               $let: {
                 vars: {
                   now: '$$NOW',
-                  twoDaysFromNow: {
-                    $dateAdd: {
-                      startDate: '$$NOW',
-                      unit: 'day',
-                      amount: 2
-                    }
-                  },
                   todayStart: {
                     $dateFromParts: {
                       year: { $year: '$$NOW' },
                       month: { $month: '$$NOW' },
                       day: { $dayOfMonth: '$$NOW' }
                     }
+                  },
+                  endDateStart: {
+                    $dateFromParts: {
+                      year: { $year: '$effectiveEndDate' },
+                      month: { $month: '$effectiveEndDate' },
+                      day: { $dayOfMonth: '$effectiveEndDate' }
+                    }
+                  },
+                  diffMs: {
+                    $subtract: ['$$endDateStart', '$$todayStart']
+                  },
+                  diffDays: {
+                    $ceil: {
+                      $divide: ['$$diffMs', 24 * 60 * 60 * 1000]
+                    }
                   }
                 },
                 in: {
-                  $and: [
-                    { $lte: ['$end_date', '$$twoDaysFromNow'] },
-                    { $gte: ['$end_date', '$$todayStart'] }
-                  ]
+                  $lte: ['$$diffDays', 2]
                 }
               }
             },
