@@ -1410,9 +1410,9 @@ exports.getAllMembershipBookings = async (req, res) => {
     });
 
     // Now calculate renewal eligibility based on effective end date
-    // Eligible if end date is within 2 days from today (past or future)
+    // Eligible if end date is within 2 days from today (only future dates: today, tomorrow, day after tomorrow)
     // Frontend logic: diffDays = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24)); return diffDays <= 2
-    // Calculate difference in days and check if <= 2
+    // But we want only future dates (>= today and <= 2 days from now)
     pipeline.push({
       $addFields: {
         renewalEligible: {
@@ -1424,34 +1424,43 @@ exports.getAllMembershipBookings = async (req, res) => {
               ]
             },
             then: {
-              $lte: [
-                {
-                  $ceil: {
-                    $divide: [
-                      {
-                        $subtract: [
-                          {
-                            $dateFromParts: {
-                              year: { $year: '$effectiveEndDate' },
-                              month: { $month: '$effectiveEndDate' },
-                              day: { $dayOfMonth: '$effectiveEndDate' }
-                            }
-                          },
-                          {
-                            $dateFromParts: {
-                              year: { $year: '$$NOW' },
-                              month: { $month: '$$NOW' },
-                              day: { $dayOfMonth: '$$NOW' }
-                            }
-                          }
-                        ]
+              $let: {
+                vars: {
+                  todayStart: {
+                    $dateFromParts: {
+                      year: { $year: '$$NOW' },
+                      month: { $month: '$$NOW' },
+                      day: { $dayOfMonth: '$$NOW' }
+                    }
+                  },
+                  twoDaysFromNow: {
+                    $dateAdd: {
+                      startDate: {
+                        $dateFromParts: {
+                          year: { $year: '$$NOW' },
+                          month: { $month: '$$NOW' },
+                          day: { $dayOfMonth: '$$NOW' }
+                        }
                       },
-                      24 * 60 * 60 * 1000
-                    ]
+                      unit: 'day',
+                      amount: 2
+                    }
+                  },
+                  endDateStart: {
+                    $dateFromParts: {
+                      year: { $year: '$effectiveEndDate' },
+                      month: { $month: '$effectiveEndDate' },
+                      day: { $dayOfMonth: '$effectiveEndDate' }
+                    }
                   }
                 },
-                2
-              ]
+                in: {
+                  $and: [
+                    { $gte: ['$$endDateStart', '$$todayStart'] },
+                    { $lte: ['$$endDateStart', '$$twoDaysFromNow'] }
+                  ]
+                }
+              }
             },
             else: false
           }
