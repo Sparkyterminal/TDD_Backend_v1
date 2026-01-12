@@ -1411,17 +1411,28 @@ exports.getAllMembershipBookings = async (req, res) => {
 
     // Now calculate renewal eligibility based on effective end date
     // Frontend logic: Renew button is enabled when:
-    // 1. Payment status is NOT "COMPLETED" - always enabled
-    // 2. Payment status IS "COMPLETED" - enabled only if isRenewalEnabled returns true
+    // 1. NOT discontinued (discontinued bookings don't show renew button)
+    // 2. Must have an effective end date
+    // 3. Payment status is NOT "COMPLETED" - always enabled
+    // 4. Payment status IS "COMPLETED" - enabled only if isRenewalEnabled returns true
     //    isRenewalEnabled: diffDays = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24)); return diffDays <= 2
-    // 3. Must have an effective end date
     pipeline.push({
       $addFields: {
         renewalEligible: {
           $cond: {
-            // Must have effective end date
+            // Must NOT be discontinued AND must have effective end date
             if: {
               $and: [
+                // Not discontinued (check for true or 'true')
+                {
+                  $not: {
+                    $or: [
+                      { $eq: ['$discontinued', true] },
+                      { $eq: ['$discontinued', 'true'] }
+                    ]
+                  }
+                },
+                // Must have effective end date
                 { $ne: ['$effectiveEndDate', null] },
                 { $ne: ['$effectiveEndDate', undefined] }
               ]
