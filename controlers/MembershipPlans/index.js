@@ -971,11 +971,17 @@ exports.getMembershipBookings = async (req, res) => {
 
 
 const INTERVAL_TO_MONTHS = {
+  // Uppercase
   MONTHLY: 1,
   QUARTERLY: 3,
   '3_MONTHS': 3,
   '6_MONTHS': 6,
-  YEARLY: 12
+  YEARLY: 12,
+  // Lowercase (for backwards compatibility)
+  monthly: 1,
+  quarterly: 3,
+  half_yearly: 6,
+  yearly: 12
 };
 
 // Map common alternative names to schema's values
@@ -1118,6 +1124,7 @@ exports.renewMembership = async (req, res) => {
   exports.getConfirmedMembershipBookings = async (req, res) => {
     try {
       const { planId, batchId } = req.params;
+      const { status, discontinued, includeOrphaned } = req.query;
   
       if (!isValidObjectId(planId)) {
         return res.status(400).json({ error: 'Invalid planId' });
@@ -1127,28 +1134,64 @@ exports.renewMembership = async (req, res) => {
         return res.status(400).json({ error: 'Invalid batchId' });
       }
   
-      const bookings = await MembershipBooking.find({
+      // Build filter
+      const filter = {
         plan: planId,
         batchId: batchId
-        // Add status filter here if your schema supports it
-      })
+      };
+      
+      // Filter by payment status if provided
+      if (status) {
+        filter['paymentResult.status'] = status;
+      }
+      
+      // Filter by discontinued status if provided
+      if (discontinued !== undefined && discontinued !== null && discontinued !== '') {
+        const isDiscontinued = discontinued === 'true' || discontinued === true;
+        filter.discontinued = isDiscontinued;
+      }
+  
+      const bookings = await MembershipBooking.find(filter)
         .populate('user')
         .populate('plan')
         .sort({ createdAt: -1 });
+
+      // Check if the batchId exists in the plan's current batches
+      let isOrphanedBatch = false;
+      let batchInfo = null;
+      if (bookings.length > 0 && bookings[0].plan) {
+        const plan = bookings[0].plan;
+        const batch = plan.batches?.find(b => b._id.toString() === batchId);
+        if (batch) {
+          batchInfo = batch;
+        } else {
+          isOrphanedBatch = true;
+        }
+      }
   
-      // Calculate end_date if not set, based on plan billing_interval
+      // Calculate end_date if not set, based on BOOKING'S billing_interval (not plan's)
       const bookingsWithCalculatedEndDate = bookings.map(booking => {
-        if (!booking.end_date && booking.plan && booking.plan.billing_interval) {
-          const start = booking.start_date ? new Date(booking.start_date) : new Date();
-          const monthsToAdd = INTERVAL_TO_MONTHS[booking.plan.billing_interval] || 0;
+        const bookingObj = booking.toObject ? booking.toObject() : booking;
+        
+        if (!bookingObj.end_date && bookingObj.billing_interval) {
+          const start = bookingObj.start_date ? new Date(bookingObj.start_date) : new Date();
+          // Handle both uppercase and lowercase billing intervals
+          const interval = bookingObj.billing_interval.toUpperCase();
+          const monthsToAdd = INTERVAL_TO_MONTHS[interval] || INTERVAL_TO_MONTHS[bookingObj.billing_interval] || 0;
           const calculatedEndDate = new Date(start);
           calculatedEndDate.setMonth(calculatedEndDate.getMonth() + monthsToAdd);
-          booking.end_date = calculatedEndDate;
+          bookingObj.end_date = calculatedEndDate;
         }
-        return booking;
+        return bookingObj;
       });
   
-      return res.status(200).json({ confirmedMembershipBookings: bookingsWithCalculatedEndDate });
+      return res.status(200).json({ 
+        confirmedMembershipBookings: bookingsWithCalculatedEndDate,
+        total: bookingsWithCalculatedEndDate.length,
+        batchInfo: batchInfo,
+        isOrphanedBatch: isOrphanedBatch,
+        message: isOrphanedBatch ? 'Warning: This batch no longer exists in the plan. These are legacy bookings.' : null
+      });
     } catch (error) {
       console.error('Error fetching confirmed membership bookings:', error);
       return res.status(500).json({ error: 'Server error' });
@@ -1157,18 +1200,109 @@ exports.renewMembership = async (req, res) => {
 
   exports.getAdminBookingSummary = async (req, res) => {
     try {
-      // Get bookings grouped by batchId (with populated batch info)
+      const { status, discontinued, planId } = req.query;
+      
+      // Build initial match filter
+      const matchFilter = {};
+      
+      if (status) {
+        matchFilter['paymentResult.status'] = status;
+      }
+      
+      if (discontinued !== undefined && discontinued !== null && discontinued !== '') {
+        const isDiscontinued = discontinued === 'true' || discontinued === true;
+        matchFilter.discontinued = isDiscontinued;
+      }
+      
+      if (planId && isValidObjectId(planId)) {
+        matchFilter.plan = new mongoose.Types.ObjectId(planId);
+      }
+  
+      // Get bookings grouped by batchId with enriched data
+      // Also check if the batchId exists in the plan's batches array
       const batches = await MembershipBooking.aggregate([
+        { $match: matchFilter },
+        {
+          $lookup: {
+            from: 'membershipplans',
+            localField: 'plan',
+            foreignField: '_id',
+            as: 'planInfo'
+          }
+        },
+        { $unwind: { path: '$planInfo', preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userInfo'
+          }
+        },
+        { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
+        {
+          // Check if batchId exists in planInfo.batches array
+          $addFields: {
+            batchInfo: {
+              $filter: {
+                input: { $ifNull: ['$planInfo.batches', []] },
+                as: 'batch',
+                cond: { $eq: ['$$batch._id', '$batchId'] }
+              }
+            }
+          }
+        },
+        {
+          $addFields: {
+            batchDetails: { $arrayElemAt: ['$batchInfo', 0] },
+            isOrphanedBatch: { 
+              $eq: [{ $size: { $ifNull: ['$batchInfo', []] } }, 0] 
+            }
+          }
+        },
         {
           $group: {
             _id: '$batchId',
-            bookings: { $push: '$$ROOT' }
+            planId: { $first: '$plan' },
+            planName: { $first: '$planInfo.name' },
+            planFor: { $first: '$planInfo.plan_for' },
+            batchSchedule: { $first: '$batchDetails.schedule' },
+            batchCapacity: { $first: '$batchDetails.capacity' },
+            isOrphanedBatch: { $first: '$isOrphanedBatch' },
+            count: { $sum: 1 },
+            bookings: { 
+              $push: {
+                _id: '$_id',
+                name: '$name',
+                email: '$email',
+                mobile_number: '$mobile_number',
+                age: '$age',
+                gender: '$gender',
+                billing_interval: '$billing_interval',
+                start_date: '$start_date',
+                end_date: '$end_date',
+                discontinued: '$discontinued',
+                paymentStatus: '$paymentResult.status',
+                createdAt: '$createdAt',
+                userId: '$user',
+                userInfo: {
+                  first_name: '$userInfo.first_name',
+                  last_name: '$userInfo.last_name'
+                }
+              }
+            }
           }
-        }
+        },
+        { $sort: { planName: 1, count: -1 } }
       ]);
+
+      // Separate active and orphaned batches for clarity
+      const activeBatches = batches.filter(b => !b.isOrphanedBatch);
+      const orphanedBatches = batches.filter(b => b.isOrphanedBatch);
   
       // Get bookings grouped by membership plan name
       const memberships = await MembershipBooking.aggregate([
+        { $match: matchFilter },
         {
           $lookup: {
             from: 'membershipplans',
@@ -1179,18 +1313,59 @@ exports.renewMembership = async (req, res) => {
         },
         { $unwind: '$planInfo' },
         {
-          $group: {
-            _id: '$planInfo.name',
-            bookings: { $push: '$$ROOT' }
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userInfo'
           }
-        }
+        },
+        { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: '$planInfo._id',
+            planName: { $first: '$planInfo.name' },
+            planFor: { $first: '$planInfo.plan_for' },
+            currentBatches: { $first: '$planInfo.batches' },
+            count: { $sum: 1 },
+            bookings: { 
+              $push: {
+                _id: '$_id',
+                batchId: '$batchId',
+                name: '$name',
+                email: '$email',
+                mobile_number: '$mobile_number',
+                billing_interval: '$billing_interval',
+                start_date: '$start_date',
+                end_date: '$end_date',
+                discontinued: '$discontinued',
+                paymentStatus: '$paymentResult.status',
+                userId: '$user',
+                userInfo: {
+                  first_name: '$userInfo.first_name',
+                  last_name: '$userInfo.last_name'
+                }
+              }
+            }
+          }
+        },
+        { $sort: { planName: 1 } }
       ]);
   
       res.json({
-        batches,
-        memberships
+        batches: activeBatches,
+        orphanedBatches: orphanedBatches,
+        memberships,
+        summary: {
+          totalActiveBatches: activeBatches.length,
+          totalOrphanedBatches: orphanedBatches.length,
+          totalPlans: memberships.length,
+          totalBookings: batches.reduce((sum, b) => sum + b.count, 0),
+          orphanedBookingsCount: orphanedBatches.reduce((sum, b) => sum + b.count, 0)
+        }
       });
     } catch (error) {
+      console.error('Error in getAdminBookingSummary:', error);
       res.status(500).json({ error: error.message });
     }
   };
