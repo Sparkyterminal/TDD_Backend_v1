@@ -972,6 +972,7 @@ exports.getMembershipBookings = async (req, res) => {
 
 const INTERVAL_TO_MONTHS = {
   MONTHLY: 1,
+  QUARTERLY: 3,
   '3_MONTHS': 3,
   '6_MONTHS': 6,
   YEARLY: 12
@@ -1197,8 +1198,10 @@ exports.renewMembership = async (req, res) => {
 
 exports.getAllMembershipBookings = async (req, res) => {
   try {
-    const { page , limit , status, planId, userId, batchId, search, discontinued, renewalEligible } = req.query;
-    const skip = (page - 1) * limit;
+    const { page = 1, limit = 10, status, planId, userId, batchId, search, discontinued, renewalEligible } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
 
     // Build match filter for aggregation
     const matchFilter = {};
@@ -1524,7 +1527,7 @@ exports.getAllMembershipBookings = async (req, res) => {
       $facet: {
         bookings: [
           { $skip: skip },
-          { $limit: parseInt(limit) }
+          { $limit: limitNum }
         ],
         totalCount: [
           { $count: 'count' }
@@ -1538,19 +1541,19 @@ exports.getAllMembershipBookings = async (req, res) => {
     const total = result[0].totalCount[0]?.count || 0;
 
     // Calculate pagination info
-    const totalPages = Math.ceil(total / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
+    const totalPages = Math.ceil(total / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
 
     res.status(200).json({
       success: true,
       data: {
         bookings,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: pageNum,
           totalPages,
           totalItems: total,
-          itemsPerPage: parseInt(limit),
+          itemsPerPage: limitNum,
           hasNextPage,
           hasPrevPage
         },

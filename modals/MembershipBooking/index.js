@@ -5,6 +5,7 @@ const ObjectId = Schema.Types.ObjectId;
 // Snapshot of interval values to compute end_date without relying on future plan changes
 const INTERVAL_TO_MONTHS = {
     MONTHLY: 1,
+    QUARTERLY: 3,
     '3_MONTHS': 3,
     '6_MONTHS': 6,
     YEARLY: 12
