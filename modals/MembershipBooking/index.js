@@ -10,11 +10,19 @@ const INTERVAL_TO_MONTHS = {
     '3_MONTHS': 3,
     '6_MONTHS': 6,
     YEARLY: 12,
-    // Lowercase (for backwards compatibility with older bookings)
+    // Lowercase (canonical - matches plan.prices keys)
     monthly: 1,
     quarterly: 3,
     half_yearly: 6,
     yearly: 12
+};
+
+// Normalize any billing_interval variant to canonical lowercase form (matches plan.prices)
+const NORMALIZE_INTERVAL = {
+    monthly: 'monthly', MONTHLY: 'monthly',
+    quarterly: 'quarterly', QUARTERLY: 'quarterly', '3_MONTHS': 'quarterly', '3_months': 'quarterly',
+    half_yearly: 'half_yearly', HALF_YEARLY: 'half_yearly', '6_MONTHS': 'half_yearly', '6_months': 'half_yearly',
+    yearly: 'yearly', YEARLY: 'yearly'
 };
 
 const membershipBookingSchema = new Schema(
@@ -88,9 +96,25 @@ const membershipBookingSchema = new Schema(
     }
 );
 
+// Normalize billing_interval to canonical form (lowercase) before any processing
+membershipBookingSchema.pre('save', function (next) {
+    if (this.billing_interval) {
+        const normalized = NORMALIZE_INTERVAL[this.billing_interval];
+        if (normalized) {
+            this.billing_interval = normalized;
+        }
+    }
+    next();
+});
+
 // Derive end_date if not provided based on billing_interval
 membershipBookingSchema.pre('validate', async function (next) {
     try {
+        // Normalize billing_interval first (in case pre-save hasn't run yet in this flow)
+        if (this.billing_interval && NORMALIZE_INTERVAL[this.billing_interval]) {
+            this.billing_interval = NORMALIZE_INTERVAL[this.billing_interval];
+        }
+
         // If end_date already set, trust it
         if (this.end_date) return next();
 

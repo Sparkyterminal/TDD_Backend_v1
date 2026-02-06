@@ -32,6 +32,18 @@ function pick(obj, allowed) {
     return out;
 }
 
+// Normalize billing_interval to canonical lowercase (matches plan.prices keys)
+function normalizeBillingInterval(val) {
+    if (!val || typeof val !== 'string') return val;
+    const map = {
+        monthly: 'monthly', MONTHLY: 'monthly',
+        quarterly: 'quarterly', QUARTERLY: 'quarterly', '3_MONTHS': 'quarterly', '3_months': 'quarterly',
+        half_yearly: 'half_yearly', HALF_YEARLY: 'half_yearly', '6_MONTHS': 'half_yearly', '6_months': 'half_yearly',
+        yearly: 'yearly', YEARLY: 'yearly'
+    };
+    return map[val] || val;
+}
+
 // exports.createPlan = async (req, res) => {
 //     try {
 //         const { name, description, dance_type, prices, benefits, is_active, plan_for, kids_category, image, batches } = req.body;
@@ -589,17 +601,18 @@ exports.createBooking = async (req, res) => {
       if (batch.capacity !== undefined && batch.capacity <= 0)
         return res.status(400).json({ error: 'Batch full' });
   
-      const price = plan.prices?.[billing_interval];
+      const normalizedInterval = normalizeBillingInterval(billing_interval);
+      const price = plan.prices?.[normalizedInterval];
       if (price === undefined || price < 0)
         return res.status(400).json({ error: `Invalid price for ${billing_interval}` });
     const totalprice = price +500
       const priceInPaise = Math.round(totalprice * 100) ;
     
-      // Create booking, store batchId
+      // Create booking, store batchId (use canonical lowercase billing_interval)
       const booking = await MembershipBooking.create({
         plan: plan._id,
         batchId: batch._id, // important!
-        billing_interval,
+        billing_interval: normalizedInterval,
         name,
         age,
         email,
@@ -1007,6 +1020,8 @@ exports.renewMembership = async (req, res) => {
     if (!allowedIntervals.includes(interval)) {
       return res.status(400).json({ error: 'Invalid billing_interval provided' });
     }
+    // Store canonical lowercase form in DB
+    const billingIntervalToStore = normalizeBillingInterval(interval);
 
     if (!isValidObjectId(membershipBookingId)) {
       return res.status(400).json({ error: 'Invalid membership booking ID' });
@@ -1086,7 +1101,7 @@ exports.renewMembership = async (req, res) => {
         user: userId,
         plan: newPlan._id,
         batchId: batch._id,
-        billing_interval: interval,
+        billing_interval: billingIntervalToStore,
         paymentResult: { status: 'initiated' }
       },
       { new: true }
@@ -2007,12 +2022,14 @@ exports.createManualBooking = async (req, res) => {
       }
     } else {
       // Calculate end date based on billing interval
-      const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
+      const normInterval = normalizeBillingInterval(billing_interval);
+      const monthsToAdd = INTERVAL_TO_MONTHS[normInterval] || INTERVAL_TO_MONTHS[billing_interval] || 1;
       endDate = new Date(startDate);
       endDate.setMonth(endDate.getMonth() + monthsToAdd);
     }
 
-    // Create the booking
+    // Create the booking (use canonical lowercase billing_interval)
+    const normalizedInterval = normalizeBillingInterval(billing_interval);
     const bookingData = {
       plan: planId,
       batchId: batchId || null,
@@ -2022,7 +2039,7 @@ exports.createManualBooking = async (req, res) => {
       email,
       mobile_number,
       gender,
-      billing_interval,
+      billing_interval: normalizedInterval,
       start_date: startDate,
       end_date: endDate,
       renewal_date: startDate,
@@ -2120,7 +2137,7 @@ exports.updateManualBooking = async (req, res) => {
     if (updateData.email) updateFields.email = updateData.email;
     if (updateData.mobile_number) updateFields.mobile_number = updateData.mobile_number;
     if (updateData.gender) updateFields.gender = updateData.gender;
-    if (updateData.billing_interval) updateFields.billing_interval = updateData.billing_interval;
+    if (updateData.billing_interval) updateFields.billing_interval = normalizeBillingInterval(updateData.billing_interval);
     if (updateData.start_date) updateFields.start_date = new Date(updateData.start_date);
     if (updateData.end_date) updateFields.end_date = new Date(updateData.end_date);
     if (updateData.renewal_date) updateFields.renewal_date = new Date(updateData.renewal_date);
@@ -2293,8 +2310,11 @@ exports.manualRenewMembership = async (req, res) => {
       return res.status(400).json({ error: 'Selected batch not found in the plan' });
     }
 
+    // Normalize billing_interval to canonical form
+    const normalizedBillingInterval = normalizeBillingInterval(billing_interval);
+
     // Calculate new dates
-    const monthsToAdd = INTERVAL_TO_MONTHS[billing_interval] || 1;
+    const monthsToAdd = INTERVAL_TO_MONTHS[normalizedBillingInterval] || 1;
 
     // Determine renewal date (defaults to now if not provided)
     const newRenewalDate = renewal_date ? new Date(renewal_date) : new Date();
@@ -2316,7 +2336,7 @@ exports.manualRenewMembership = async (req, res) => {
     // Update existing booking with new plan, batch and extended dates
     existingBooking.plan = planId;
     existingBooking.batchId = batch._id;
-    existingBooking.billing_interval = billing_interval;
+    existingBooking.billing_interval = normalizedBillingInterval;
     // Do not change start_date on manual renewal
     existingBooking.end_date = newEndDate;
     // For renewals, set the renewal date (provided or now)
