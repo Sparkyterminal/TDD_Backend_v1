@@ -22,6 +22,12 @@ function isValidObjectId(id) {
     return mongoose.Types.ObjectId.isValid(id);
 }
 
+function isAdminRequest(req) {
+    const token = req.get('Authorization');
+    const decoded = token ? jwt.decode(token) : null;
+    return Boolean(decoded && decoded.role === 'ADMIN');
+}
+
 function pick(obj, allowed) {
     const out = {};
     for (const key of allowed) {
@@ -1393,6 +1399,16 @@ exports.getAllMembershipBookings = async (req, res) => {
     const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
 
+    const userLookupProject = {
+      first_name: 1,
+      last_name: 1,
+      email_data: 1,
+      phone_data: 1
+    };
+    if (isAdminRequest(req)) {
+      userLookupProject.admin_remarks = 1;
+    }
+
     // Build match filter for aggregation
     const matchFilter = {};
     
@@ -1433,12 +1449,7 @@ exports.getAllMembershipBookings = async (req, res) => {
           as: 'userData',
           pipeline: [
             {
-              $project: {
-                first_name: 1,
-                last_name: 1,
-                email_data: 1,
-                phone_data: 1
-              }
+              $project: userLookupProject
             }
           ]
         }
@@ -1780,6 +1791,16 @@ exports.getMembershipBookingById = async (req, res) => {
       });
     }
 
+    const bookingUserProject = {
+      first_name: 1,
+      last_name: 1,
+      'email_data.temp_email_id': 1,
+      'phone_data.phone_number': 1
+    };
+    if (isAdminRequest(req)) {
+      bookingUserProject.admin_remarks = 1;
+    }
+
     // Aggregation pipeline for single booking
     const pipeline = [
       // Match the specific booking
@@ -1794,12 +1815,7 @@ exports.getMembershipBookingById = async (req, res) => {
           as: 'userData',
           pipeline: [
             {
-              $project: {
-                first_name: 1,
-                last_name: 1,
-                'email_data.temp_email_id': 1,
-                'phone_data.phone_number': 1
-              }
+              $project: bookingUserProject
             }
           ]
         }

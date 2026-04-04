@@ -74,6 +74,13 @@ const userSchema = new Schema(
         is_archived: {
             type: Boolean,
             default: false
+        },
+        /** Internal notes visible only to admins (e.g. from admin dashboard). */
+        admin_remarks: {
+            type: String,
+            default: '',
+            maxlength: 5000,
+            trim: true
         }
     },
     {

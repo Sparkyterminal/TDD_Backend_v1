@@ -10,6 +10,11 @@ const mongoose = require('mongoose');
 const jwt = require("jsonwebtoken");
 
 const validations = require("../../utils/validations");
+
+function getDecodedToken(req) {
+  const token = req.get("Authorization");
+  return token ? jwt.decode(token) : null;
+}
 // const mongoose = require('mongoose');
 
 const JWT_SECRET = process.env.DANCE_DISTRICT_JWT_SECRET;
@@ -192,9 +197,12 @@ module.exports.getUserDashboard = async (req, res) => {
       return res.status(404).json({ message: "Invalid user ID" });
     }
 
-    // Basic profile
+    const decoded = getDecodedToken(req);
+    const isAdmin = decoded && decoded.role === "ADMIN";
+
+    const selectFields = "first_name last_name email_data phone_data role is_active is_archived createdAt";
     const user = await User.findById(id)
-      .select("first_name last_name email_data phone_data role is_active is_archived createdAt")
+      .select(isAdmin ? `${selectFields} admin_remarks` : selectFields)
       .lean();
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -240,6 +248,23 @@ module.exports.getUser = async (req, res) => {
       return res.status(404).json({ message: "Invalid user ID" });
     }
 
+    const decoded = getDecodedToken(req);
+    const isAdmin = decoded && decoded.role === "ADMIN";
+
+    const project = {
+      first_name: 1,
+      last_name: 1,
+      email_data: 1,
+      phone_data: 1,
+      role: 1,
+      is_active: 1,
+      is_archived: 1,
+      media: 1,
+      createdAt: 1,
+      updatedAt: 1
+    };
+    if (isAdmin) project.admin_remarks = 1;
+
     const userAgg = await User.aggregate([
       { $match: { _id: new mongoose.Types.ObjectId(id) } },
       {
@@ -250,20 +275,7 @@ module.exports.getUser = async (req, res) => {
           as: "media"
         }
       },
-      {
-        $project: {
-          first_name: 1,
-          last_name: 1,
-          email_data: 1,
-          phone_data: 1,
-          role: 1,
-          is_active: 1,
-          is_archived: 1,
-          media: 1,
-          createdAt: 1,
-          updatedAt: 1
-        }
-      }
+      { $project: project }
     ]);
 
     if (!userAgg || userAgg.length === 0) {
@@ -428,6 +440,52 @@ module.exports.getCoaches = async (req, res) => {
 };
 
 
+// Admin-only internal remarks (does not change name, email, etc.)
+module.exports.updateAdminRemarks = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Bad request", fields: errors.array() });
+  }
+
+  const decoded = getDecodedToken(req);
+  if (!decoded || decoded.role !== "ADMIN") {
+    return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
+  }
+
+  const userId = req.params.id;
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(STATUS.BAD_REQUEST).json({ message: "Invalid user ID" });
+  }
+
+  const remarks =
+    req.body.admin_remarks === undefined || req.body.admin_remarks === null
+      ? ""
+      : String(req.body.admin_remarks);
+  if (remarks.length > 5000) {
+    return res.status(STATUS.VALIDATION_FAILED).json({ message: "Remarks must be at most 5000 characters" });
+  }
+
+  try {
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { $set: { admin_remarks: remarks } },
+      { new: true, runValidators: true }
+    ).select("admin_remarks first_name last_name");
+    if (!updated) {
+      return res.status(STATUS.NOT_FOUND).json({ message: "User not found" });
+    }
+    return res.status(STATUS.SUCCESS).json({
+      message: "Admin remarks updated",
+      data: { admin_remarks: updated.admin_remarks },
+    });
+  } catch (error) {
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+      message: MESSAGE.internalServerError,
+      error,
+    });
+  }
+};
+
 // Edit user (by admin only)
 module.exports.editUser = async (req, res) => {
   const errors = validationResult(req);
@@ -465,6 +523,10 @@ module.exports.editUser = async (req, res) => {
     } catch (err) {
       return res.status(STATUS.BAD_REQUEST).json({ message: 'Invalid media ID format' });
     }
+  }
+
+  if (req.body.admin_remarks !== undefined) {
+    updates.admin_remarks = typeof req.body.admin_remarks === 'string' ? req.body.admin_remarks : '';
   }
 
   try {

@@ -56,6 +56,17 @@ router.post(
 
 
 router.get('/coaches', userController.getCoaches);
+
+router.patch(
+  "/:id/admin-remarks",
+  [
+    param("id").not().isEmpty(),
+    body("admin_remarks").optional({ nullable: true }).isString().isLength({ max: 5000 }),
+  ],
+  isAuth,
+  userController.updateAdminRemarks
+);
+
 router.get('/:id', isAuth, userController.getUser);
 router.get('/:id/dashboard', isAuth, userController.getUserDashboard);
 
@@ -74,6 +85,7 @@ router.put(
       }
       return true;
     }),
+    body("admin_remarks").optional({ nullable: true }).isString().isLength({ max: 5000 }),
   ],
   isAuth,
   userController.editUser
