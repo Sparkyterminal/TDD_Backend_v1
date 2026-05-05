@@ -838,7 +838,7 @@ exports.createBooking = async (req, res) => {
       return res.status(500).send('Internal server error');
     }
   };
-  ;
+  
   
 
 exports.getUserMemberships = async (req, res) => {

@@ -21,6 +21,11 @@ const enquire = new Schema(
             type: String,
             required: true
         },
+        source: {
+            type: String,
+            enum: ["PUBLIC", "ADMIN"],
+            default: "PUBLIC"
+        },
         is_contacted:{
             type: Boolean,
             default: false
