@@ -11,7 +11,7 @@ const parseToken = (req) => {
  */
 const createEnquiry = async (req, res) => {
     try {
-        const { name, phone_number, email_id, purpose } = req.body;
+        const { name, phone_number, purpose } = req.body;
         if (!name || !phone_number || !purpose) {
             return res.status(400).json({ message: "name, phone_number, and purpose are required." });
         }
@@ -19,7 +19,6 @@ const createEnquiry = async (req, res) => {
         const enquiry = new Enquire({
             name,
             phone_number,
-            email_id,
             purpose
         });
 
@@ -37,7 +36,7 @@ const createAdminEnquiry = async (req, res) => {
             return res.status(403).json({ message: "Only admin can create admin enquiries." });
         }
 
-        const { name, phone_number, email_id, purpose } = req.body;
+        const { name, phone_number, purpose } = req.body;
         if (!name || !phone_number || !purpose) {
             return res.status(400).json({ message: "name, phone_number, and purpose are required." });
         }
@@ -45,13 +44,41 @@ const createAdminEnquiry = async (req, res) => {
         const enquiry = new Enquire({
             name,
             phone_number,
-            email_id,
             purpose,
             source: "ADMIN",
         });
 
         await enquiry.save();
         return res.status(201).json(enquiry.toJSON());
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+const updateAdminEnquiry = async (req, res) => {
+    try {
+        const decoded = parseToken(req);
+        if (!decoded || decoded.role !== "ADMIN") {
+            return res.status(403).json({ message: "Only admin can update admin enquiries." });
+        }
+
+        const { id } = req.params;
+        const { name, phone_number, purpose } = req.body;
+        if (!name || !phone_number || !purpose) {
+            return res.status(400).json({ message: "name, phone_number, and purpose are required." });
+        }
+
+        const enquiry = await Enquire.findOne({ _id: id, source: "ADMIN" });
+        if (!enquiry) {
+            return res.status(404).json({ message: "Admin enquiry not found." });
+        }
+
+        enquiry.name = name;
+        enquiry.phone_number = phone_number;
+        enquiry.purpose = purpose;
+        await enquiry.save();
+
+        return res.status(200).json(enquiry.toJSON());
     } catch (err) {
         return res.status(500).json({ message: err.message });
     }
@@ -87,5 +114,6 @@ const getEnquiries = async (req, res) => {
 module.exports = {
     createEnquiry,
     createAdminEnquiry,
+    updateAdminEnquiry,
     getEnquiries
 };
