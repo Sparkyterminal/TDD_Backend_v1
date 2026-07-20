@@ -17,7 +17,7 @@ const bookingSchema = new Schema({
   },
   email: {
     type: String,
-    required: true,
+    required: false,
   },
   mobile_number: {
     type: String,

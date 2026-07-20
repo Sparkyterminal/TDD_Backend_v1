@@ -2,6 +2,7 @@ const axios = require('axios');
 const Workshop = require('../../modals/Workshops');
 const mongoose = require('mongoose');
 const Booking = require('../../modals/WorkshopBooking');
+const { getInternalEmailFromPhone } = require('../../utils/functions');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
 const clientId = process.env.CLIENT_ID
 const clientSecret = process.env.CLIENT_SECRET
@@ -675,10 +676,10 @@ exports.cancelWorkshop = async (req, res) => {
 
 exports.bookWorkshop = async (req, res) => {
   try {
-    const { workshopId, batchIds, name, age, email, mobile_number, gender, price } = req.body;
+    const { workshopId, batchIds, name, age, mobile_number, gender, price } = req.body;
     
     // Validate required fields
-    if (!workshopId || !name || !age || !email || !mobile_number || !gender || price == null) {
+    if (!workshopId || !name || !age || !mobile_number || !gender || price == null) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -737,7 +738,7 @@ exports.bookWorkshop = async (req, res) => {
       batch_ids: batchIds,
       name,
       age,
-      email,
+      email: getInternalEmailFromPhone(mobile_number),
       mobile_number,
       gender,
       status: 'INITIATED',
@@ -993,8 +994,7 @@ exports.createManualBooking = async (req, res) => {
       workshopId, 
       batchIds, 
       name, 
-      age, 
-      email, 
+      age,
       mobile_number, 
       gender, 
       payment_status,
@@ -1002,12 +1002,14 @@ exports.createManualBooking = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!workshopId || !name || !age || !email || !mobile_number || !gender) {
+    if (!workshopId || !name || !age || !mobile_number || !gender) {
       return res.status(400).json({ 
         success: false,
-        error: 'Workshop ID, name, age, email, mobile number, and gender are required' 
+        error: 'Workshop ID, name, age, mobile number, and gender are required' 
       });
     }
+
+    const internalEmail = getInternalEmailFromPhone(mobile_number);
 
     // Validate IDs
     if (!isValidObjectId(workshopId)) {
@@ -1121,7 +1123,7 @@ exports.createManualBooking = async (req, res) => {
       batch_ids: batchIds,
       name,
       age,
-      email,
+      email: internalEmail,
       mobile_number,
       gender,
       pricing_details: pricingDetails,
@@ -1167,7 +1169,7 @@ exports.createManualBooking = async (req, res) => {
         const location = workshop.location || 'The Dance District Studio, Gubalaala Main Road Bengaluru';
         
         await sendWorkshopBookingConfirmationEmail(
-          email,
+          internalEmail,
           name,
           workshopTitle,
           date,

@@ -3,7 +3,7 @@ const RentalContact = require('../../modals/RentalContact'); // adjust path
 // Create a new rental contact
 exports.createRentalContact = async (req, res) => {
   try {
-    const { name, phone_number, email_id, purpose } = req.body;
+    const { name, phone_number, purpose } = req.body;
 
     if (!name || !phone_number) {
       return res.status(400).json({ error: 'Name and phone number are required' });
@@ -12,7 +12,6 @@ exports.createRentalContact = async (req, res) => {
     const contact = await RentalContact.create({
       name,
       phone_number,
-      email_id,
       purpose
     });
 

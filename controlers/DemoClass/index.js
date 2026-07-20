@@ -1,11 +1,11 @@
-const DemoBooking = require('../../modals/DemoClass'); // Adjust path as needed
+const DemoBooking = require('../../modals/DemoClass');
+const { getInternalEmailFromPhone } = require('../../utils/functions');
 
-// Create a new demo booking
 exports.createBooking = async (req, res) => {
   try {
-    const { plan, name, age, email, mobile_number, gender } = req.body;
+    const { plan, name, age, mobile_number, gender } = req.body;
 
-    if (!plan || !name || age === undefined || !email || !mobile_number || !gender) {
+    if (!plan || !name || age === undefined || !mobile_number || !gender) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
@@ -13,7 +13,7 @@ exports.createBooking = async (req, res) => {
       plan,
       name,
       age,
-      email,
+      email: getInternalEmailFromPhone(mobile_number),
       mobile_number,
       gender,
     });
@@ -26,7 +26,6 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-// Get all demo bookings with plan populated
 exports.getAllBookings = async (req, res) => {
   try {
     const bookings = await DemoBooking.find().populate('plan');
@@ -37,7 +36,6 @@ exports.getAllBookings = async (req, res) => {
   }
 };
 
-// Update contact status for a demo booking
 exports.updateContactStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -61,7 +59,6 @@ exports.updateContactStatus = async (req, res) => {
       message: `Demo booking ${is_contacted ? 'marked as contacted' : 'marked as not contacted'}`,
       booking: updatedBooking
     });
-
   } catch (error) {
     console.error('Error updating contact status:', error);
     res.status(500).json({ error: 'Server error' });

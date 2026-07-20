@@ -15,6 +15,12 @@ const generatePassword = () => {
     return password;
 }
 
+/** Internal placeholder when legacy flows expect an email but UI collects phone only. */
+const getInternalEmailFromPhone = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits ? `${digits}@member.thedancedistrict.local` : '';
+};
+
 const getThisEntityCount = async (entity) => {
     let tempEntity = entity.toUpperCase();
     
@@ -100,5 +106,6 @@ module.exports = {
     updateThisEntityCount,
     saveTestReport,
     generatePassword,
-    sendLoginValidationSMS
+    sendLoginValidationSMS,
+    getInternalEmailFromPhone,
 }

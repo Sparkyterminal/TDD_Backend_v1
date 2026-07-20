@@ -480,7 +480,6 @@ const validateUserAndBookingUpdate = [
   body('booking').optional().isObject(),
   body('booking.name').optional().isString(),
   body('booking.age').optional().isInt({ min: 0 }),
-  body('booking.email').optional().isEmail(),
   body('booking.mobile_number').optional().isString(),
   body('booking.gender').optional().isIn(['Male', 'Female', 'Other']),
   body('booking.discontinued').optional().isBoolean(),

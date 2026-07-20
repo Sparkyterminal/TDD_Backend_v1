@@ -8,6 +8,7 @@ const User = require('../../modals/Users');
 
 const ClassType = require('../../modals/ClassTypes');
 const bcrypt = require('bcryptjs');
+const { getInternalEmailFromPhone } = require('../../utils/functions');
 const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
 
 // const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
@@ -26,6 +27,41 @@ function isAdminRequest(req) {
     const token = req.get('Authorization');
     const decoded = token ? jwt.decode(token) : null;
     return Boolean(decoded && decoded.role === 'ADMIN');
+}
+
+async function findUserByPhoneOrLegacyEmail(mobile_number, legacyEmail) {
+    if (mobile_number) {
+        const byPhone = await User.findOne({ 'phone_data.phone_number': mobile_number });
+        if (byPhone) return byPhone;
+    }
+    if (legacyEmail) {
+        return User.findOne({
+            $or: [
+                { 'email_data.email_id': legacyEmail },
+                { 'email_data.temp_email_id': legacyEmail }
+            ]
+        });
+    }
+    return null;
+}
+
+async function createUserFromBookingDetails(booking) {
+    const [firstName, ...rest] = (booking.name || 'User').trim().split(/\s+/);
+    const lastName = rest.join(' ');
+    const password = `${firstName || 'User'}@123`;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const internalEmail = booking.email || getInternalEmailFromPhone(booking.mobile_number);
+    return User.create({
+        first_name: firstName || 'User',
+        last_name: lastName || 'User',
+        media: [],
+        email_data: { temp_email_id: internalEmail, is_validated: true },
+        phone_data: { phone_number: booking.mobile_number, is_validated: true },
+        role: 'USER',
+        password: hashedPassword,
+        is_active: true,
+        is_archived: false
+    });
 }
 
 function pick(obj, allowed) {
@@ -572,7 +608,6 @@ exports.createBooking = async (req, res) => {
         billing_interval,
         name,
         age,
-        email,
         mobile_number,
         gender,
         paymentResult
@@ -590,8 +625,6 @@ exports.createBooking = async (req, res) => {
         return res.status(400).json({ error: 'Valid name is required' });
       if (typeof age !== 'number' || age < 0)
         return res.status(400).json({ error: 'Valid age is required' });
-      if (!email || typeof email !== 'string')
-        return res.status(400).json({ error: 'Valid email is required' });
       if (!mobile_number || typeof mobile_number !== 'string')
         return res.status(400).json({ error: 'Valid mobile_number is required' });
       const allowedGenders = ['Male', 'Female', 'Other'];
@@ -621,7 +654,7 @@ exports.createBooking = async (req, res) => {
         billing_interval: normalizedInterval,
         name,
         age,
-        email,
+        email: getInternalEmailFromPhone(mobile_number),
         mobile_number,
         gender,
         paymentResult: paymentResult || { status: 'initiated' }
@@ -713,23 +746,9 @@ exports.createBooking = async (req, res) => {
             console.error('Email error:', e);
           }
         } else {
-          let user = await User.findOne({ 'email_data.email_id': booking.email });
+          let user = await findUserByPhoneOrLegacyEmail(booking.mobile_number, booking.email);
           if (!user) {
-            const [firstName, ...rest] = (booking.name || 'User').trim().split(/\s+/);
-            const lastName = rest.join(' ');
-            const password = `${firstName || 'User'}@123`;
-            const hashedPassword = await bcrypt.hash(password, 10);
-            user = await User.create({
-              first_name: firstName || 'User',
-              last_name: lastName || 'User',
-              media: [],
-              email_data: { temp_email_id: booking.email, is_validated: true },
-              phone_data: { phone_number: booking.mobile_number, is_validated: true },
-              role: 'USER',
-              password: hashedPassword,
-              is_active: true,
-              is_archived: false
-            });
+            user = await createUserFromBookingDetails(booking);
           }
   
           await MembershipBooking.findByIdAndUpdate(bookingId, {
@@ -1707,11 +1726,9 @@ exports.getAllMembershipBookings = async (req, res) => {
         $match: {
           $or: [
             { name: searchRegex },
-            { email: searchRegex },
             { mobile_number: searchRegex },
             { 'userInfo.first_name': searchRegex },
             { 'userInfo.last_name': searchRegex },
-            { 'userInfo.email_data.temp_email_id': searchRegex },
             { 'userInfo.phone_data.phone_number': searchRegex },
             { 'planInfo.name': searchRegex },
             { 'batchInfo.name': searchRegex }
@@ -1889,7 +1906,6 @@ exports.createManualBooking = async (req, res) => {
       batchId, 
       name, 
       age, 
-      email, 
       mobile_number, 
       gender, 
       billing_interval,
@@ -1899,12 +1915,14 @@ exports.createManualBooking = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!planId || !name || !age || !email || !mobile_number || !gender || !billing_interval) {
+    if (!planId || !name || !age || !mobile_number || !gender || !billing_interval) {
       return res.status(400).json({ 
         success: false,
-        error: 'Plan ID, name, age, email, mobile number, gender, and billing interval are required' 
+        error: 'Plan ID, name, age, mobile number, gender, and billing interval are required' 
       });
     }
+
+    const internalEmail = getInternalEmailFromPhone(mobile_number);
 
     // Validate IDs
     if (!isValidObjectId(planId)) {
@@ -1972,11 +1990,11 @@ exports.createManualBooking = async (req, res) => {
           ]
         });
       }
-      if (!existingUser && email) {
+      if (!existingUser && internalEmail) {
         existingUser = await User.findOne({
           $or: [
-            { 'email_data.email_id': email },
-            { 'email_data.temp_email_id': email }
+            { 'email_data.email_id': internalEmail },
+            { 'email_data.temp_email_id': internalEmail }
           ]
         });
       }
@@ -1984,17 +2002,15 @@ exports.createManualBooking = async (req, res) => {
       if (existingUser) {
         resolvedUserId = existingUser._id;
       } else {
-        // Create a new user record
         const [firstName, ...rest] = (name || 'User').trim().split(/\s+/);
         const lastName = rest.join(' ') || 'User';
-        const bcrypt = require('bcryptjs');
         const password = `${firstName || 'User'}@123`;
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = await User.create({
           first_name: firstName || 'User',
           last_name: lastName,
           media: [],
-          email_data: { temp_email_id: email, is_validated: true },
+          email_data: { temp_email_id: internalEmail, is_validated: true },
           phone_data: { phone_number: mobile_number, is_validated: true },
           role: 'USER',
           password: hashedPassword,
@@ -2052,7 +2068,7 @@ exports.createManualBooking = async (req, res) => {
       user: resolvedUserId,
       name,
       age,
-      email,
+      email: internalEmail,
       mobile_number,
       gender,
       billing_interval: normalizedInterval,
@@ -2471,7 +2487,7 @@ exports.updateUserAndBooking = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found for this user' });
     }
 
-    const allowedBookingFields = ['name', 'age', 'email', 'mobile_number', 'gender', 'discontinued', 'renewal_date', 'start_date', 'end_date'];
+    const allowedBookingFields = ['name', 'age', 'mobile_number', 'gender', 'discontinued', 'renewal_date', 'start_date', 'end_date'];
     const bookingFieldsToUpdate = {};
     allowedBookingFields.forEach(field => {
       if (field in updateBookingData) {
