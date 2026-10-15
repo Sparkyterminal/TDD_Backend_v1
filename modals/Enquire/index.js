@@ -26,6 +26,11 @@ const enquire = new Schema(
             enum: ["PUBLIC", "ADMIN"],
             default: "PUBLIC"
         },
+        status: {
+            type: String,
+            enum: ["NEW", "JOINED", "NOT_INTERESTED", "FOLLOW_UP"],
+            default: "NEW"
+        },
         is_contacted:{
             type: Boolean,
             default: false

@@ -1,6 +1,8 @@
 const Enquire = require('../../modals/Enquire');
 const jwt = require("jsonwebtoken");
 
+const ENQUIRY_STATUSES = ["NEW", "JOINED", "NOT_INTERESTED", "FOLLOW_UP"];
+
 const parseToken = (req) => {
     const token = req.get("Authorization");
     return token ? jwt.decode(token) : null;
@@ -63,9 +65,12 @@ const updateAdminEnquiry = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { name, phone_number, purpose } = req.body;
+        const { name, phone_number, purpose, status } = req.body;
         if (!name || !phone_number || !purpose) {
             return res.status(400).json({ message: "name, phone_number, and purpose are required." });
+        }
+        if (status !== undefined && !ENQUIRY_STATUSES.includes(status)) {
+            return res.status(400).json({ message: `status must be one of ${ENQUIRY_STATUSES.join(", ")}` });
         }
 
         const enquiry = await Enquire.findOne({ _id: id, source: "ADMIN" });
@@ -76,7 +81,35 @@ const updateAdminEnquiry = async (req, res) => {
         enquiry.name = name;
         enquiry.phone_number = phone_number;
         enquiry.purpose = purpose;
+        if (status !== undefined) enquiry.status = status;
         await enquiry.save();
+
+        return res.status(200).json(enquiry.toJSON());
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+const updateEnquiryStatus = async (req, res) => {
+    try {
+        const decoded = parseToken(req);
+        if (!decoded || decoded.role !== "ADMIN") {
+            return res.status(403).json({ message: "Only admin can change enquiry status." });
+        }
+
+        const { status } = req.body;
+        if (!ENQUIRY_STATUSES.includes(status)) {
+            return res.status(400).json({ message: `status must be one of ${ENQUIRY_STATUSES.join(", ")}` });
+        }
+
+        const enquiry = await Enquire.findByIdAndUpdate(
+            req.params.id,
+            { $set: { status } },
+            { new: true, runValidators: true }
+        );
+        if (!enquiry) {
+            return res.status(404).json({ message: "Enquiry not found." });
+        }
 
         return res.status(200).json(enquiry.toJSON());
     } catch (err) {
@@ -115,5 +148,6 @@ module.exports = {
     createEnquiry,
     createAdminEnquiry,
     updateAdminEnquiry,
+    updateEnquiryStatus,
     getEnquiries
 };
