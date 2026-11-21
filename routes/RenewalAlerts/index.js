@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const renewalAlertController = require('../../controlers/RenewalAlerts');
+const { isAdmin } = require('../../authentication/is-auth');
+const renewalAlertController = require('../../controllers/RenewalAlerts');
 
-// Routes for renewal alerts
-router.post('/send/:bookingId', renewalAlertController.sendRenewalAlert);
-router.post('/send-bulk', renewalAlertController.sendBulkRenewalAlerts);
-// router.get('/stats', renewalAlertController.getRenewalAlertStats);
+// Admin only: trigger WhatsApp renewal reminders manually (the daily cron sends them automatically)
+router.post('/send/:bookingId', isAdmin, renewalAlertController.sendRenewalAlert);
+router.post('/send-bulk', isAdmin, renewalAlertController.sendBulkRenewalAlerts);
 
 module.exports = router;

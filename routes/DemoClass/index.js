@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const demoBookingController = require('../../controlers/DemoClass'); // Adjust path
+const { isAdmin } = require('../../authentication/is-auth');
+const demoBookingController = require('../../controllers/DemoClass');
 
-// POST /demo-bookings - create new booking
+// Public: book a demo class
 router.post('/demo-bookings', demoBookingController.createBooking);
 
-// GET /demo-bookings - get all bookings
-router.get('/demo-bookings', demoBookingController.getAllBookings);
-
-// PUT /demo-bookings/:id/contact-status - update contact status
-router.put('/demo-bookings/:id/contact-status', demoBookingController.updateContactStatus);
+// Admin: list demo bookings / mark as contacted
+router.get('/demo-bookings', isAdmin, demoBookingController.getAllBookings);
+router.put('/demo-bookings/:id/contact-status', isAdmin, demoBookingController.updateContactStatus);
 
 module.exports = router;

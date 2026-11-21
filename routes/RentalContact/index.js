@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const rentalContactsController = require('../../controlers/RentalContact'); // adjust path
+const { isAdmin } = require('../../authentication/is-auth');
+const rentalContactsController = require('../../controllers/RentalContact');
 
-// POST - create a new rental contact
+// Public: rental enquiry form
 router.post('/', rentalContactsController.createRentalContact);
 
-// GET - fetch all rental contacts
-router.get('/', rentalContactsController.getRentalContacts);
+// Admin: list rental enquiries
+router.get('/', isAdmin, rentalContactsController.getRentalContacts);
 
 module.exports = router;

@@ -1,12 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const { body,param } = require("express-validator");
-const isAuth = require("../../authentication/is-auth");
-const userController = require("../../controlers/User");
+const { isAuth, isAdmin, isSelfOrAdmin } = require("../../authentication/is-auth");
+const userController = require("../../controllers/User");
 
 
+// Admin only: create a user (any role). Previously public, which let anyone create an ADMIN account.
 router.post(
   "/register-token",
+  isAdmin,
   [
     body("first_name").not().isEmpty(),
     body("last_name").not().isEmpty(),
@@ -27,12 +29,6 @@ router.post(
   userController.loginUsingEmail
 );
 
-// router.get(
-//   "/:id?",
-//   isAuth,
-//   userController.getUsers
-// );
-
 // Admin adds user with only COACH role
 
 router.post(
@@ -50,12 +46,12 @@ router.post(
         mediaArr.every(id => /^[a-fA-F0-9]{24}$/.test(id))
       ).withMessage("All media items must be valid ObjectIds"),
   ],
-  isAuth,
+  isAdmin,
   userController.addCoach
 );
 
 
-router.get('/coaches', userController.getCoaches);
+router.get('/coaches', isAdmin, userController.getCoaches);
 
 router.patch(
   "/:id/admin-remarks",
@@ -63,12 +59,12 @@ router.patch(
     param("id").not().isEmpty(),
     body("admin_remarks").optional({ nullable: true }).isString().isLength({ max: 5000 }),
   ],
-  isAuth,
+  isAdmin,
   userController.updateAdminRemarks
 );
 
-router.get('/:id', isAuth, userController.getUser);
-router.get('/:id/dashboard', isAuth, userController.getUserDashboard);
+router.get('/:id', isSelfOrAdmin('id'), userController.getUser);
+router.get('/:id/dashboard', isSelfOrAdmin('id'), userController.getUserDashboard);
 
 // Edit user (admin only)
 router.put(
@@ -87,7 +83,7 @@ router.put(
     }),
     body("admin_remarks").optional({ nullable: true }).isString().isLength({ max: 5000 }),
   ],
-  isAuth,
+  isAdmin,
   userController.editUser
 );
 
@@ -96,7 +92,7 @@ router.put(
 router.delete(
   "/delete/:id",
   [param("id").not().isEmpty()],
-  isAuth,
+  isAdmin,
   userController.deleteUser
 );
 

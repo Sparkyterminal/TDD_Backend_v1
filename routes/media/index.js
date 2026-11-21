@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const { allowedFileTypes } = require("../../utils/constants");
-const isAuth = require('../../authentication/is-auth');
-const mediaController = require('../../controlers/media');
+const { isAdmin } = require('../../authentication/is-auth');
+const mediaController = require('../../controllers/media');
 
 const mime_types = [];
 allowedFileTypes.map((fileType) => mime_types.push(fileType.mimetype));
@@ -17,7 +17,6 @@ const fileStorage = multer.diskStorage({
         cb(null, 'assets/temp_resources');
     },
     filename: (req, file, cb) => {
-        console.log(file)
         cb(null, uuidv4() + '-' + file.originalname);
     }
 });
@@ -43,17 +42,20 @@ const upload = multer({
 
 router.post(
     '/',
+    isAdmin,
     upload.single('media'),
     mediaController.saveMediaFile
 );
 
 router.get(
     '/auth/file/:id',
+    isAdmin,
     mediaController.getThisAuthFile
 );
 
 router.get(
     '/',
+    isAdmin,
     mediaController.getAllAuthFiles
 );
 

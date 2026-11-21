@@ -1,14 +1,3 @@
-const entitiesList = [
-    'DISTRICT',
-    'AVATAR',
-    'SUBJECT',
-    'HOSPITAL'
-];
-
-const activityTypes = ['LOGGED_IN', 'LOGGED_OUT', 'CREATED', 'MODIFIED', 'ACTIVATED', 'DEACTIVATED', 'ARCHIVED'];
-
-const childActivityTypes = ['RECEIVED', 'SENT_BACK', 'PROCESSED', 'APPROVED', 'REJECTED', 'ON_HOLD'];
-
 const fileUnits = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
 
 const maxFileSelection = 10;
@@ -166,9 +155,6 @@ const allowedFileTypes = [
 
 
 module.exports = {
-    entitiesList,
-    activityTypes,
-    childActivityTypes,
     allowedFileTypes,
     fileUnits,
     maxFileSelection,

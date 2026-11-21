@@ -1,16 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const isAuth = require('../../authentication/is-auth');
+const { isAdmin } = require('../../authentication/is-auth');
 
-const { createEnquiry, getEnquiries, createAdminEnquiry, updateAdminEnquiry, updateEnquiryStatus } = require('../../controlers/Enquire');
+const { createEnquiry, getEnquiries, createAdminEnquiry, updateAdminEnquiry, updateEnquiryStatus } = require('../../controllers/Enquire');
 
-// POST /api/enquires - Create new enquiry
+// Public: enquiry form
 router.post('/', createEnquiry);
-router.post('/admin', isAuth, createAdminEnquiry);
-router.put('/admin/:id', isAuth, updateAdminEnquiry);
-router.patch('/:id/status', isAuth, updateEnquiryStatus);
 
-// GET /api/enquires - Get all enquiries
-router.get('/', getEnquiries);
+// Admin
+router.post('/admin', isAdmin, createAdminEnquiry);
+router.put('/admin/:id', isAdmin, updateAdminEnquiry);
+router.patch('/:id/status', isAdmin, updateEnquiryStatus);
+router.get('/', isAdmin, getEnquiries);
 
 module.exports = router;

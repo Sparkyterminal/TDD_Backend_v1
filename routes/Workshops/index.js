@@ -1,17 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const workshopController = require('../../controlers/Workshops');
+const { isAdmin } = require('../../authentication/is-auth');
+const workshopController = require('../../controllers/Workshops');
 
-router.post('/', workshopController.createWorkshop);
+// Public
 router.get('/', workshopController.getWorkshops);
 router.post('/book', workshopController.bookWorkshop);
-router.post('/manual-booking', workshopController.createManualBooking);
-router.get('/check-status', workshopController.getStatusOfPayment);
-router.get('/:id', workshopController.getWorkshop);
-router.put('/:id', workshopController.updateWorkshop);
-router.delete('/:id', workshopController.cancelWorkshop);
-router.get('/:workshopId/bookings', workshopController.getConfirmedBookings);
-// router.post('/phonepe-webhook', workshopController.phonepeWebhook);
+router.get('/check-status', workshopController.getStatusOfPayment); // PhonePe browser redirect
 
+// Admin
+router.post('/', isAdmin, workshopController.createWorkshop);
+router.post('/manual-booking', isAdmin, workshopController.createManualBooking);
+
+// Param routes last
+router.get('/:id', workshopController.getWorkshop);
+router.put('/:id', isAdmin, workshopController.updateWorkshop);
+router.delete('/:id', isAdmin, workshopController.cancelWorkshop);
+router.get('/:workshopId/bookings', isAdmin, workshopController.getConfirmedBookings);
 
 module.exports = router;

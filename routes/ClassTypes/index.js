@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const { body, param, query } = require("express-validator");
-const isAuth = require("../../authentication/is-auth");
-const classTypeController = require("../../controlers/ClassTypes");
+const { isAdmin } = require("../../authentication/is-auth");
+const classTypeController = require("../../controllers/ClassTypes");
 
 // Validation middleware
 const validateClassType = [
@@ -120,19 +120,19 @@ const validatePagination = [
 // Routes
 
 /**
- * @route   POST /api/class-types
+ * @route   POST /api/class-type
  * @desc    Create a new class type
- * @access  Private (Admin/Coach)
+ * @access  Admin
  */
 router.post(
   "/",
-  isAuth,
+  isAdmin,
   validateClassType,
   classTypeController.createClassType
 );
  
 /**
- * @route   GET /api/class-types
+ * @route   GET /api/class-type
  * @desc    Get all class types with pagination and filtering
  * @access  Public
  */
@@ -143,7 +143,7 @@ router.get(
 );
 
 /**
- * @route   GET /api/class-types/:id
+ * @route   GET /api/class-type/:id
  * @desc    Get a single class type by ID
  * @access  Public
  */
@@ -154,32 +154,32 @@ router.get(
 );
 
 /**
- * @route   PUT /api/class-types/:id
+ * @route   PUT /api/class-type/:id
  * @desc    Update a class type
- * @access  Private (Admin/Coach)
+ * @access  Admin
  */
 router.put(
   "/:id",
-  isAuth,
+  isAdmin,
   validateId,
   validateUpdateClassType,
   classTypeController.updateClassType
 );
 
 /**
- * @route   DELETE /api/class-types/:id
+ * @route   DELETE /api/class-type/:id
  * @desc    Soft delete a class type
- * @access  Private (Admin)
+ * @access  Admin
  */
 router.delete(
   "/:id",
-  isAuth,
+  isAdmin,
   validateId,
   classTypeController.deleteClassType
 );
 
 /**
- * @route   GET /api/class-types/category/:category
+ * @route   GET /api/class-type/category/:category
  * @desc    Get class types by category
  * @access  Public
  */
@@ -190,7 +190,7 @@ router.get(
 );
 
 /**
- * @route   GET /api/class-types/level/:level
+ * @route   GET /api/class-type/level/:level
  * @desc    Get class types by level
  * @access  Public
  */
