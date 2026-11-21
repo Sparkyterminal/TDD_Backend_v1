@@ -1,9 +1,33 @@
 # AGENTS.md — Dance District Backend (`dance_district`)
 
 Guidance for AI agents and developers working on this repo. Read it fully before making changes.
+
+> **Start here:** §0 (current production status and open items) and §12 (how to deploy). Both are kept up to date.
 The frontend is a separate repo at `../TDD_frontend_v1` (it has its own `AGENTS.md`). Most backend changes also need a frontend change, so check both sides before you finish.
 
 ---
+
+## 0. Current status (last updated 2026-11-21)
+
+**Production is live** at https://www.thedancedistrictbysahitya.in (and the bare domain), on the AWS server described in §12. Both repos are on `main` and deployed:
+
+| | Status |
+|---|---|
+| Website, API, admin dashboard | ✅ Live, serving the production Atlas DB |
+| HTTPS | ✅ Let's Encrypt for `www` and the bare domain, auto-renews (certbot.timer) |
+| WhatsApp renewal reminders | ✅ ON (`ENABLE_CRON=true`), daily 10:56 IST, sent 7 days before, 1 day before and on the expiry day |
+| WhatsApp booking confirmations | ✅ Code active; they only fire after a successful payment |
+| **Online payments** | ❌ **No live gateway.** The server `.env` has PhonePe **TEST** credentials (`CLIENT_ID=TEST-…`), so "Pay" fails and leaves `paymentResult.status: 'initiated'` records (harmless; real members are `COMPLETED`). The owner is getting a gateway: either live PhonePe keys (only `.env` changes needed) or another gateway (write a new service next to `services/phonepe.js` plus the two `check-status` handlers). The PhonePe SDK also logs a "Client Not Found" error at startup because of the test keys; that's expected |
+| **Uploaded photos** | ❌ Lost with the old server. `Media` documents point to files that don't exist (images 404 / "No Image"). **The client is re-uploading** them via the admin dashboard (edit each workshop and plan) |
+| Old server `13.203.196.222` (AWS Mumbai, other account) | Dead/blocked and unreachable. It must never run again with its cron, or reminders would be sent twice |
+
+**Open to-dos for the owner** (remind them if they're still open):
+1. **Rotate the MongoDB Atlas password and the MSG91 auth key.** Both GitHub repos are **public**, and older commits contain them in source. Consider making the repos private.
+2. MongoDB Atlas → Network Access: the server connected without a confirmed allow-list entry, so `0.0.0.0/0` may be open. Restrict it to `13.54.85.27/32`.
+3. Add live payment gateway credentials when available.
+4. Optional: ask the AWS Organization admin to allow `ap-south-1` (Mumbai) for lower latency (see §12).
+
+**History of the 2026-11 refactor** (so you don't redo it): folders renamed (`controlers` → `controllers`, `modals` → `models`), `config/` + `services/` added, every admin route locked with `isAdmin`, idempotent payment returns, pending renewals, server-side workshop pricing, email removed (WhatsApp only), hardcoded secrets and URLs removed, PhonePe SDK vendored, e2e test suite added (`npm test`).
 
 ## 1. What this is
 
@@ -46,10 +70,17 @@ npm start                 # node app.js (production)
 npm run fix-quarterly-end-dates   # one-off migration, WRITES TO THE CONFIGURED DB
 ```
 
-`npm test` does nothing. To verify a change:
-1. Run `node --check <file>` on every file you touched.
-2. Start the server against a **local or throwaway database** (`DANCE_DISTRICT_DB_URL=mongodb://127.0.0.1:27017/<scratch_db>`) and call the endpoints. Never point experiments at the production Atlas DB.
-3. For payment or WhatsApp code: set dummy `CLIENT_ID`, `CLIENT_SECRET` and `MSG91_AUTHKEY`, set `PHONEPE_ENV=SANDBOX`, and stub `services/phonepe` / `services/whatsapp` (or block outbound HTTP). Never trigger real payments or messages while testing.
+### Testing
+```bash
+npm test          # tests/e2e.js: 77 end-to-end checks (needs MongoDB on 127.0.0.1:27017)
+npm run routes    # scripts/list-routes.js: every route + its auth middleware (set CLIENT_ID=x CLIENT_SECRET=x)
+```
+- `npm test` boots the real app on port **4099** against the throwaway DB **`dds_refactor_test`** (dropped before and after) with **dummy credentials**. PhonePe and MSG91 are faked, and **every other outbound HTTP call is blocked**. It covers auth/roles, public endpoints, membership booking + idempotent `check-status`, pending renewals (fail and success), the reminder template, workshop server-side pricing (409 on stale price), idempotent workshop confirmation, manual bookings and admin listings. **Run it after every backend change and extend it when you add behaviour.** If it reports "HARNESS ERROR … databaseName", something else is already listening on port 4099.
+- For a routing change, save `npm run routes` output before and after and `diff` them.
+- Always `node --check` the files you touched.
+- Never point experiments at the production Atlas DB. For manual testing use a local DB (`DANCE_DISTRICT_DB_URL=mongodb://127.0.0.1:27017/<scratch_db>`), dummy `CLIENT_ID` / `CLIENT_SECRET` / `MSG91_AUTHKEY`, `PHONEPE_ENV=SANDBOX` and `ENABLE_CRON=false`.
+- **Testing the built frontend:** in `../TDD_frontend_v1`, run `npm run build && npx vite preview` (port 4173, proxies `/api` to `localhost:4044`) with this backend running locally. Always check the **production bundle** in a browser before deploying frontend changes; a dev-only check once missed a bug that broke every API call in production.
+- To look at real data locally: `mongodump` the production DB (**read-only**), `mongorestore` it into a separate local DB (e.g. `dds_local_preview`), run with dummy keys and cron off, and **delete the dump and the DB afterwards** (they contain customer PII).
 
 ## 4. Directory layout
 
@@ -71,7 +102,9 @@ utils/
   validations.js          # validateName / validatePassword / ... (async, return { status })
   functions.js            # getInternalEmailFromPhone()
   constants.js            # allowedFileTypes (upload whitelist), size limits
-scripts/                  # one-off maintenance scripts (see §10); not part of the server
+scripts/                  # one-off maintenance scripts (see §10) + list-routes.js (npm run routes)
+tests/e2e.js              # end-to-end test suite (npm test), see §3
+vendor/                   # pg-sdk-node-2.0.2.tgz (vendored PhonePe SDK, see §8)
 assets/                   # uploaded files, served at /api/assets/* (runtime data, see §9)
 .env.example              # every supported env var
 ```
@@ -201,7 +234,61 @@ These are one-off maintenance and debug scripts. Most connect to `mongodb://127.
 
 See `.env.example` for the full list with defaults. Required: `DANCE_DISTRICT_DB_URL`, `DANCE_DISTRICT_JWT_SECRET`, `CLIENT_ID`, `CLIENT_SECRET`. Usually also set: `MSG91_AUTHKEY`, `WHATSAPP_NUMBER`, `DANCE_DISTRICT_PORT`, the token TTLs, and `FRONTEND_URL` / `PUBLIC_API_URL` if the domain changes.
 
-## 12. Checklist before you finish a change
+## 12. Production deployment and operations
+
+### Infrastructure
+| Item | Value |
+|---|---|
+| AWS account | `533047842523` (part of an AWS Organization, management account `642504869186`) |
+| **Region** | **`ap-southeast-2` (Sydney)**. A service control policy **denies EC2 in every other region**, including Mumbai `ap-south-1` |
+| Local AWS CLI profile | `dancedistrict` (IAM user `dancedistrict-deploy`, `AmazonEC2FullAccess`). The profile's default region is `ap-south-1`, so **always pass `--region ap-southeast-2`** or `export AWS_PROFILE=dancedistrict AWS_REGION=ap-southeast-2`. In zsh, pass flags literally, not through an unquoted `$VAR` |
+| EC2 instance | `i-03bbdbd2fe70dbd00`, Name `dancedistrict-prod`, t3.small, Ubuntu 24.04, 30 GB gp3 encrypted (`DeleteOnTermination=false`), 2 GB swap, timezone Asia/Kolkata |
+| Public IP | Elastic IP **`13.54.85.27`** |
+| Security group | `sg-09b2e071ec7a3a427` (`dancedistrict-web`): 80/443 open to all; **SSH 22 only from `106.51.188.170/32`** (the owner's office IP at setup time). If SSH times out, the owner's IP has probably changed, so add the new one: `aws ec2 authorize-security-group-ingress --group-id sg-09b2e071ec7a3a427 --protocol tcp --port 22 --cidr <ip>/32 --region ap-southeast-2 --profile dancedistrict` |
+| SSH | `ssh -i ~/.ssh/dancedistrict-sydney.pem ubuntu@13.54.85.27` (the key exists only on the owner's Mac) |
+| DNS | Registrar/DNS at **Spaceship** (`launch1/2.spaceship.net`). `@` and `www` → A `13.54.85.27` |
+| Database | MongoDB Atlas (unchanged), via `DANCE_DISTRICT_DB_URL` in the server `.env` |
+
+### Layout on the server
+```
+/srv/dancedistrict/backend    # git clone of this repo (main); .env here (chmod 600, never committed)
+/srv/dancedistrict/frontend   # git clone of TDD_frontend_v1 (main); nginx serves its committed dist/
+/etc/nginx/sites-available/dancedistrict   # site config (symlinked in sites-enabled)
+```
+- **nginx:** serves `frontend/dist` with an SPA fallback (`try_files … /index.html`), `/assets/` cached 7 days, `/api/` proxied to `127.0.0.1:4044`, `client_max_body_size 110m`. Certbot added the 443 server block and the port-80 → https redirects (`# managed by Certbot`).
+- **PM2:** one process, **`dancedistrict-api`** (`app.js`, `--max-memory-restart 700M`), started on boot by the `pm2-ubuntu` systemd unit (`pm2 save` after any process change). Only **one** instance may run, because the cron jobs live in-process.
+- **TLS:** certificate name `www.thedancedistrictbysahitya.in` covers both hostnames. It renews through `certbot.timer`. `/usr/local/bin/dd-apex-cert.sh` was a one-off helper and its cron entry has removed itself.
+- Ghostscript is installed, so PDF uploads are compressed.
+- **The server `.env`** = the owner's local `.env` plus `ENABLE_CRON=true` (and a comment). To change a value: `nano /srv/dancedistrict/backend/.env`, then `pm2 restart dancedistrict-api --update-env`. **Never print it or copy it into chat or logs.** Secrets should be entered by the owner, not typed by an agent.
+
+### Deploying
+Backend (after pushing to `main`):
+```bash
+ssh -i ~/.ssh/dancedistrict-sydney.pem ubuntu@13.54.85.27 \
+  'cd /srv/dancedistrict/backend && git pull && npm ci --omit=dev && pm2 restart dancedistrict-api && sleep 4 && curl -s localhost:4044/api/health'
+```
+Frontend: build locally, check the production bundle (§3), **commit `dist/`**, push, then:
+```bash
+ssh -i ~/.ssh/dancedistrict-sydney.pem ubuntu@13.54.85.27 'cd /srv/dancedistrict/frontend && git pull'
+```
+(No restart needed; nginx serves the new files immediately.)
+
+After any deploy, verify: `curl https://www.thedancedistrictbysahitya.in/api/health` returns `{"status":"ok"}`, key pages return 200, and an admin endpoint without a token returns 401. Load the changed page in a browser on the live domain.
+
+### Operations cheatsheet (on the server)
+```bash
+pm2 status                                   # process state + restart count
+pm2 logs dancedistrict-api --lines 100       # app logs (…/.pm2/logs/dancedistrict-api-{out,error}.log)
+sudo tail -f /var/log/nginx/access.log       # traffic (bots probe /api/graphql etc.; ignore those)
+sudo nginx -t && sudo systemctl reload nginx # after editing the nginx config
+sudo certbot certificates                    # cert domains + expiry
+df -h /                                      # disk (uploads live under backend/assets/)
+```
+- **Uploaded files** live in `/srv/dancedistrict/backend/assets/` on the EBS root volume, **not in git**. Snapshot the volume before risky server work. If you ever move servers, copy `assets/` across.
+- Git-tracked thumbnails under `assets/images/thumb/` would conflict with `git pull` only if both sides change the same file; uploads use UUID filenames, so that doesn't happen in practice.
+- **Before changing anything that affects reminders or payments, check how many real customers it will touch.** Query the production DB read-only from the server (`findBookingsDueForRenewal(date)` in `cronJobs/renewalAlerts.js` accepts a date for previewing a run).
+
+## 13. Checklist before you finish a change
 
 - [ ] No `process.env` outside `config/`. No hardcoded URLs, keys, fees or phone numbers.
 - [ ] New routes: correct auth (`isAdmin` for admin, public only if the public site needs it), static paths before `/:id`, validators in place.
@@ -209,5 +296,6 @@ See `.env.example` for the full list with defaults. Required: `DANCE_DISTRICT_DB
 - [ ] New schema fields are declared in the model.
 - [ ] Payment, WhatsApp and seat logic stay idempotent. No double charge, double seat or double message on repeat requests.
 - [ ] Workshop price rules are still identical to the frontend's `getBatchPrice()`.
-- [ ] `node --check` passes, the server starts, and the change was exercised against a non-production DB with payments and WhatsApp stubbed.
+- [ ] `node --check` passes and **`npm test` passes** (extend `tests/e2e.js` for new behaviour).
+- [ ] Deployed per §12 if the owner asked for it, verified on the live domain, and §0 updated if the status changed.
 - [ ] This file (and the frontend `AGENTS.md`, if the API contract changed) is updated.
