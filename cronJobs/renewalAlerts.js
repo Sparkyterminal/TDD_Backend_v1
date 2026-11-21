@@ -3,6 +3,9 @@
 const mongoose = require('mongoose');
 const config = require('../config');
 const MembershipBooking = require('../models/MembershipBooking');
+// Register the models used by populate() so this also works when run standalone (outside app.js).
+require('../models/MembershipPlans');
+require('../models/Users');
 const { sendRenewalReminder } = require('../services/whatsapp');
 
 /** Members whose membership ends within the next 30 days or ended in the last 2 days. */
