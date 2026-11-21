@@ -8,16 +8,27 @@ require('../models/MembershipPlans');
 require('../models/Users');
 const { sendRenewalReminder } = require('../services/whatsapp');
 
-/** Members whose membership ends within the next 30 days or ended in the last 2 days. */
-async function findBookingsDueForRenewal() {
-    const today = new Date();
-    const thirtyDaysFromNow = new Date(today);
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-    const twoDaysAgo = new Date(today);
-    twoDaysAgo.setDate(today.getDate() - 2);
+// Reminders go out exactly this many days before the membership end date (0 = on the expiry day).
+const REMINDER_DAYS_BEFORE_EXPIRY = [7, 1, 0];
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000; // India has no daylight saving
+
+/** [start, end) of the India-time calendar day that is `daysFromToday` days from today. */
+function istDayRange(daysFromToday, now = new Date()) {
+    const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+    const istMidnightUtcMs = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST_OFFSET_MS;
+    const start = new Date(istMidnightUtcMs + daysFromToday * 24 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return { start, end };
+}
+
+/** Paid memberships whose end date falls exactly 7 days, 1 day, or 0 days from today (India time). */
+async function findBookingsDueForRenewal(now = new Date()) {
     return MembershipBooking.find({
-        end_date: { $gte: twoDaysAgo, $lte: thirtyDaysFromNow },
+        $or: REMINDER_DAYS_BEFORE_EXPIRY.map((days) => {
+            const { start, end } = istDayRange(days, now);
+            return { end_date: { $gte: start, $lt: end } };
+        }),
         'paymentResult.status': 'COMPLETED', // only paid memberships
         user: { $exists: true },
     })
@@ -67,4 +78,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { sendDailyRenewalAlerts, findBookingsDueForRenewal };
+module.exports = { sendDailyRenewalAlerts, findBookingsDueForRenewal, istDayRange, REMINDER_DAYS_BEFORE_EXPIRY };

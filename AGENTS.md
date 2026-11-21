@@ -163,8 +163,8 @@ Unknown `/api/*` paths return `404 {message:'Not Found'}`. Uncaught errors retur
 - `discontinued` flags a member who stopped coming: `PATCH /booking/:id/discontinued` toggles it and `PATCH /booking/:id/reactivate` clears it.
 
 ### Renewal reminders
-- A daily cron at **10:56 IST** runs `sendDailyRenewalAlerts()`. It picks bookings with `end_date` between 2 days ago and 30 days ahead, `paymentResult.status: 'COMPLETED'` and a `user`, and sends the template `renewal` (name, end date, `config.urls.renewalForm(id)`, studio contact).
-- Admins can trigger it manually with `POST /renewal-alerts/send/:bookingId` or `/send-bulk`.
+- A daily cron at **10:56 IST** runs `sendDailyRenewalAlerts()`. Each paid member (`paymentResult.status: 'COMPLETED'`, has a `user`) gets **exactly three reminders**: when their `end_date` falls on the India-time calendar day **7 days ahead, 1 day ahead, and on the expiry day** (`REMINDER_DAYS_BEFORE_EXPIRY = [7, 1, 0]` in `cronJobs/renewalAlerts.js`). The template is `renewal` (name, end date, `config.urls.renewalForm(id)`, studio contact). Because selection is by calendar day, the cron must run **once per day**: a second run on the same day would resend.
+- Admins can trigger it manually: `POST /renewal-alerts/send-bulk` sends today's due reminders (same 7/1/0 rule, so don't run it on a day the cron already ran), and `POST /renewal-alerts/send/:bookingId` sends one member's reminder (allowed from 30 days before to 2 days after expiry).
 
 ### Workshop booking (public)
 1. `POST /workshop/book` with `{ workshopId, batchIds[], name, age, mobile_number, gender, price }`.
