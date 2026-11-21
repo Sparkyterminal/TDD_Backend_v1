@@ -28,7 +28,7 @@ Live site and API: `https://www.thedancedistrictbysahitya.in` (API under `/api/`
 | DB | **MongoDB Atlas** via **Mongoose 8** |
 | Validation | `express-validator` in route files, plus manual checks in controllers |
 | Auth | `jsonwebtoken`, `bcryptjs` |
-| Payments | `pg-sdk-node` (PhonePe Standard Checkout), wrapped in `services/phonepe.js` |
+| Payments | `pg-sdk-node` 2.0.2 (PhonePe Standard Checkout), **vendored** at `vendor/pg-sdk-node-2.0.2.tgz` and wrapped in `services/phonepe.js` |
 | Messaging | MSG91 WhatsApp API, wrapped in `services/whatsapp.js` |
 | Uploads | `multer` (disk) and `sharp`; optional Ghostscript (`gs`) to compress PDFs |
 | Scheduling | `node-cron` inside the API process, timezone `Asia/Kolkata` |
@@ -189,6 +189,9 @@ Unknown `/api/*` paths return `404 {message:'Not Found'}`. Uncaught errors retur
 7. When PhonePe reports a payment as `COMPLETED` but the workshop was cancelled or the batch is gone, the booking is marked `FAILED`. **The customer has paid and needs a manual refund.** Check the logs for `capacityOk` failures.
 8. Large legacy controllers (`MembershipPlans` ≈ 2.3k lines) mix old and new styles. Keep changes surgical and follow the patterns in the function you're editing.
 9. Unused or partial features: class sessions and enrollments plus the USER dashboard endpoints exist, but the frontend USER dashboard isn't routed. The COACH UI is hidden. `create-users-for-bookings` is a one-off admin migration.
+
+### PhonePe SDK is vendored
+PhonePe publishes the SDK at an **unversioned URL** whose contents change. On 2026-11-21 it served a 2.0.4 tarball with **no code in it**, which fails the lockfile integrity check and would break payments. The working 2.0.2 is committed as `vendor/pg-sdk-node-2.0.2.tgz` and referenced as `file:vendor/...`. To upgrade, download a specific version, check that the tarball contains `dist/`, test checkout in `PHONEPE_ENV=SANDBOX`, then replace the vendored file.
 
 ## 10. Scripts (`scripts/`)
 
